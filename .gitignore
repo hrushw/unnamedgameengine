@@ -1,4 +1,5 @@
-age
+game
 *.o
 *.ppm
 *.pdf
+*.png

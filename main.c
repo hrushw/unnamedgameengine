@@ -21,17 +21,21 @@ typedef struct vec2_t {
 	i32 x, y;
 } Vec2;
 
+typedef struct uvec2_t {
+	u32 x, y;
+} UVec2;
+
 typedef struct vec3b_t {
 	u32 b0, b1, b2;
 } Vec3B;
 
 typedef struct rect_t {
-	Vec2 r0;
-	Vec2 sz;
+	UVec2 r0;
+	UVec2 sz;
 } Rect;
 
 typedef struct triangle_t {
-	Vec2 r0, r1, r2;
+	UVec2 r0, r1, r2;
 } Triangle;
 
 typedef struct vec3_pixel_t {
@@ -39,10 +43,9 @@ typedef struct vec3_pixel_t {
 } Vec3Pixel;
 
 typedef struct fbuf_t {
-	Vec2 	sz;
+	UVec2 	sz;
 	Pixel *buf;
 } Fbuf;
-
 
 // get pixel alpha value
 u8 pixA(Pixel p) {
@@ -73,16 +76,16 @@ Pixel argb_to_pixel(u8 a, u8 r, u8 g, u8 b) {
 	;
 }
 
-void fb_set_pix(Fbuf *fb, Vec2 r, Pixel p) {
+void fb_set_pix(Fbuf *fb, UVec2 r, Pixel p) {
 	fb->buf[r.y*fb->sz.x + r.x] = p;
 }
 
-Pixel fb_get_pix(Fbuf *fb, Vec2 r) {
+Pixel fb_get_pix(Fbuf *fb, UVec2 r) {
 	return fb->buf[r.y*fb->sz.x + r.x];
 }
 
 void fb_draw_rect(Fbuf *fb, Rect S, Pixel p) {
-	Vec2 r;
+	UVec2 r;
 	for(r.y = S.r0.y; r.y < S.r0.y + S.sz.y; ++r.y)
 		for(r.x = S.r0.x; r.x < S.r0.x + S.sz.x; ++r.x)
 			fb_set_pix(fb, r, p);
@@ -98,25 +101,30 @@ void fb_draw_rect_mirrored_x(Fbuf *fb, Rect rect, Pixel p) {
 	fb_draw_rect(fb, rect, p);
 }
 
-i32 square(i32 x) {
+i32 i32square(i32 x) {
 	return x*x;
 }
 
-void fb_draw_parabola(Fbuf *fb, Rect bound, Vec2 origin, int a, Pixel p) {
-	Vec2 r;
+void fb_draw_parabola(Fbuf *fb, Rect bound, UVec2 origin, int a, Pixel p) {
+	UVec2 r;
 	for(r.y = bound.r0.y; r.y < bound.r0.y + bound.sz.y; ++r.y)
 		for(r.x = bound.r0.x; r.x < bound.r0.x + bound.sz.x; ++r.x)
-			if (a*(r.y - origin.y) > square(r.x - origin.x))
+			if (a*((i32)r.y - (i32)origin.y) > i32square(r.x - origin.x))
 				fb_set_pix(fb, r, p);
 }
 
-i32 det(Vec2 v0, Vec2 v1) {
+i32 vec2det(Vec2 v0, Vec2 v1) {
 	return v0.x*v1.y - v1.x*v0.y;
 }
 
 Vec2 vec2sub(Vec2 r0, Vec2 r1) {
 	return (Vec2) {r0.x - r1.x, r0.y - r1.y};
 }
+
+Vec2 uvec2sub(UVec2 r0, UVec2 r1) {
+	return (Vec2) {(i32)r0.x - (i32)r1.x, (i32)r0.y - (i32)r1.y};
+}
+
 
 int i32cmpsign(i32 x, i32 y) {
 	return (x > 0 && y < 0) || (x < 0 && y > 0);
@@ -126,10 +134,7 @@ int i32modcmp(i32 x, i32 y) {
 	return x > 0 ? x > y : x < y;
 }
 
-int barycentric_coords(Vec3B *B, Vec2 dr, Vec2 dr1, Vec2 dr2, i32 D) {
-	i32 D1 = det(dr1, dr);
-	i32 D2 = det(dr, dr2);
-
+int barycentric_coords(Vec3B *B, i32 D1, i32 D2, i32 D) {
 	if (
 		   i32cmpsign(D, D1)
 		|| i32cmpsign(D, D2)
@@ -165,10 +170,11 @@ Pixel lerp(Vec3B B, Vec3Pixel P) {
 
 // TODO faster function for monochrome triangles?
 void fb_draw_triangle(Fbuf *fb, Rect bound, Triangle S, Vec3Pixel P) {
-	Vec2 dr1 = vec2sub(S.r1, S.r0);
-	Vec2 dr2 = vec2sub(S.r2, S.r0);
-	i32 D = det(dr1, dr2);
-	Vec2 r, dr;
+	Vec2 dr1 = uvec2sub(S.r1, S.r0);
+	Vec2 dr2 = uvec2sub(S.r2, S.r0);
+	i32 D = vec2det(dr1, dr2);
+	UVec2 r;
+	Vec2 dr;
 	Vec3B B;
 
 	for(
@@ -181,7 +187,7 @@ void fb_draw_triangle(Fbuf *fb, Rect bound, Triangle S, Vec3Pixel P) {
 			r.x < bound.r0.x + bound.sz.x;
 			++r.x, ++dr.x
 		)
-			if(!barycentric_coords(&B, dr, dr1, dr2, D))
+			if(!barycentric_coords(&B, vec2det(dr1, dr), vec2det(dr, dr2), D))
 				fb_set_pix(fb, r, lerp(B, P));
 }
 
@@ -193,7 +199,7 @@ void ximgsetpix(XImage *img, size_t i, Pixel p) {
 }
 
 void fbtoximg(Fbuf *fb, XImage *img) {
-	Vec2 r;
+	UVec2 r;
 	for(r.y = 0; r.y < fb->sz.y; ++r.y)
 		for(r.x = 0; r.x < fb->sz.x; ++r.x)
 			ximgsetpix(
@@ -217,7 +223,7 @@ void draw(Fbuf *fb) {
 		{fb->sz.x, fb->sz.y/3}
 	};
 
-	Vec2 SmileOrigin = {fb->sz.x/2, 5*fb->sz.y/6};
+	UVec2 SmileOrigin = {fb->sz.x/2, 5*fb->sz.y/6};
 	Pixel SmileClr = 0xFF0000;
 	fb_draw_parabola(fb, SmileBound, SmileOrigin, -256, SmileClr);
 
@@ -241,7 +247,7 @@ void draw(Fbuf *fb) {
 void fb_to_ppm(FILE *f, Fbuf *fb) {
 	Pixel p;
 	uint8_t pixbuf[3];
-	for(i32 i = 0; i < fb->sz.x*fb->sz.y; ++i) {
+	for(u32 i = 0; i < fb->sz.x*fb->sz.y; ++i) {
 		p = fb->buf[i];
 		pixbuf[0] = pixR(p);
 		pixbuf[1] = pixG(p);

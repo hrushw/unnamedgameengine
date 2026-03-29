@@ -1,5 +1,5 @@
 CC=gcc
-CFLAGS=-Wall -Wextra -Wvla -Wpedantic
+CFLAGS=-Wall -Wextra -Wvla -Wpedantic -Winline
 LFLAGS=-lX11 -lXext
 
 game: main.c

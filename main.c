@@ -17,13 +17,16 @@ typedef int32_t i32;
 typedef int64_t i64;
 
 typedef uint32_t Pixel;
+typedef uint32_t Angle;
 
 #define U32MAX UINT32_MAX
+#define I32MAX INT32_MAX
 
 /* Structure declarations */
 typedef struct vec2_t {
 	int32_t x, y;
 } Vec2;
+typedef Vec2 i32Complex;
 
 typedef struct uvec2_t {
 	u32 x, y;
@@ -55,6 +58,13 @@ typedef struct circle_t {
 	Vec2 r0;
 	u32 R;
 } Circle;
+
+i32Complex i32complex_mul_norm(i32Complex z1, i32Complex z2) {
+	return (i32Complex) {
+		((i64)z1.x * (i64)z2.x - (i64)z1.y * (i64)z2.y) / (i64)I32MAX,
+		((i64)z1.x * (i64)z2.y + (i64)z1.y * (i64)z2.x) / (i64)I32MAX,
+	};
+}
 
 /* Pixel ARGB access functions */
 static inline
@@ -214,6 +224,7 @@ void fb_draw_triangle(Fbuf *fb, Triangle S, Vec3Pixel P) {
 				fb_set_pix(fb, r, lerp(B, P));
 }
 
+static
 Rect fb_mirror_rect_x(Fbuf *fb, Rect R) {
 	return (Rect) {
 		{ (i32)fb->sz.x - R.r0.x - R.sz.x, R.r0.y },
@@ -230,6 +241,7 @@ void fb_draw_parabola_bounded(Fbuf *fb, Rect bound, UVec2 origin, i32 a, Pixel p
 }
 
 /* framebuffer export functions (to X11 window or PPM file) */
+static
 void ximgsetpix_bgra(XImage *img, size_t i, Pixel p) {
 	img->data[i  ] = pixB(p);
 	img->data[i+1] = pixG(p);
@@ -420,6 +432,11 @@ int main() {
 	enum win_height_e { HEIGHT = 480 };
 
 	static Pixel fbufdata[HEIGHT*WIDTH] = {0};
+
+	i32Complex z1 = { 0, I32MAX };
+	i32Complex z2 = { I32MAX/2, I32MAX/4 };
+	i32Complex z = i32complex_mul_norm(z1, z2);
+	printf("%d %d\n", z.x, z.y);
 
 	Fbuf fb = { { WIDTH, HEIGHT }, fbufdata };
 	draw(&fb);

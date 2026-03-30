@@ -103,26 +103,6 @@ i32 i32min0(i32 a) {
 	return a > 0 ? a : 0;
 }
 
-/*
-static
-int i32cmpsign(i32 x, i32 y) {
-	return (x > 0 && y < 0) || (x < 0 && y > 0);
-}
-
-static
-int i32cmpsign3(i32 x, i32 y, i32 z) {
-	return !(
-		   (x > 0 && y > 0 && z > 0)
-		|| (x < 0 && y < 0 && z < 0)
-	);
-}
-
-static
-int i32modcmp(i32 x, i32 y) {
-	return x > 0 ? x > y : x < y;
-}
-*/
-
 static inline
 void i32signrestrict(i32 *r, i32 *x1, i32 *x2) {
 	if(*r < 0) {
@@ -142,18 +122,6 @@ u32 u32chkaddoverflow(u32 a, u32 b) {
 	return a + b < a;
 }
 
-/*
-static inline
-u32 absdiff(u32 a, u32 b) {
-	return a > b ? a - b : b - a;
-}
-
-static inline
-u64 u32square(u32 a) {
-	return (u64)a * (u64)a;
-}
-*/
-
 /* Vector Operations */
 static inline
 i32 vec2det(Vec2 v0, Vec2 v1) {
@@ -164,13 +132,6 @@ static
 Vec2 vec2sub(Vec2 r0, Vec2 r1) {
 	return (Vec2) {r0.x - r1.x, r0.y - r1.y};
 }
-
-/*
-static
-Vec2 uvec2sub(UVec2 r0, UVec2 r1) {
-	return (Vec2) {(i32)r0.x - (i32)r1.x, (i32)r0.y - (i32)r1.y};
-}
-*/
 
 /* Linear interpolation functions */
 static

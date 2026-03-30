@@ -21,7 +21,7 @@ typedef uint32_t Pixel;
 #define U32MAX UINT32_MAX
 
 typedef struct vec2_t {
-	i32 x, y;
+	int32_t x, y;
 } Vec2;
 
 typedef struct uvec2_t {
@@ -51,21 +51,25 @@ typedef struct fbuf_t {
 } Fbuf;
 
 // get pixel alpha value
+static inline
 u8 pixA(Pixel p) {
 	return (p >> 24) & 0xFF;
 }
 
 // get pixel red value
+static inline
 u8 pixR(Pixel p) {
 	return (p >> 16) & 0xFF;
 }
 
 // get pixel green value
+static inline
 u8 pixG(Pixel p) {
 	return (p >> 8) & 0xFF;
 }
 
 // get pixel blue value
+static inline
 u8 pixB(Pixel p) {
 	return p & 0xFF;
 }
@@ -79,14 +83,17 @@ Pixel argb_to_pixel(u8 a, u8 r, u8 g, u8 b) {
 	;
 }
 
+static inline
 void fb_set_pix(Fbuf *fb, UVec2 r, Pixel p) {
 	fb->buf[r.y*fb->sz.x + r.x] = p;
 }
 
+static inline
 Pixel fb_get_pix(Fbuf *fb, UVec2 r) {
 	return fb->buf[r.y*fb->sz.x + r.x];
 }
 
+static inline
 i32 i32min0(i32 a) {
 	return a > 0 ? a : 0;
 }
@@ -105,11 +112,12 @@ Rect fb_mirror_rect_x(Fbuf *fb, Rect R) {
 	};
 }
 
+static inline
 i32 i32square(i32 x) {
 	return x*x;
 }
 
-void fb_draw_parabola(Fbuf *fb, Rect bound, UVec2 origin, int a, Pixel p) {
+void fb_draw_parabola(Fbuf *fb, Rect bound, UVec2 origin, i32 a, Pixel p) {
 	UVec2 r;
 	for(r.y = bound.r0.y; r.y < bound.r0.y + bound.sz.y; ++r.y)
 		for(r.x = bound.r0.x; r.x < bound.r0.x + bound.sz.x; ++r.x)
@@ -117,6 +125,7 @@ void fb_draw_parabola(Fbuf *fb, Rect bound, UVec2 origin, int a, Pixel p) {
 				fb_set_pix(fb, r, p);
 }
 
+static inline
 i32 vec2det(Vec2 v0, Vec2 v1) {
 	return v0.x*v1.y - v1.x*v0.y;
 }
@@ -131,11 +140,13 @@ Vec2 uvec2sub(UVec2 r0, UVec2 r1) {
 	return (Vec2) {(i32)r0.x - (i32)r1.x, (i32)r0.y - (i32)r1.y};
 }
 
-int i32cmpsign(i32 x, i32 y) {
+static inline
+i32 i32cmpsign(i32 x, i32 y) {
 	return (x > 0 && y < 0) || (x < 0 && y > 0);
 }
 
-int i32modcmp(i32 x, i32 y) {
+static inline
+i32 i32modcmp(i32 x, i32 y) {
 	return x > 0 ? x > y : x < y;
 }
 
@@ -194,10 +205,12 @@ void fb_draw_triangle(Fbuf *fb, Triangle S, Vec3Pixel P) {
 				fb_set_pix(fb, r, lerp(B, P));
 }
 
+static inline
 u32 absdiff(u32 a, u32 b) {
 	return a > b ? a - b : b - a;
 }
 
+static inline
 u64 u32square(u32 a) {
 	return (u64)a * (u64)a;
 }
@@ -258,7 +271,7 @@ void draw(Fbuf *fb) {
 
 void fb_to_ppm(FILE *f, Fbuf *fb) {
 	Pixel p;
-	uint8_t pixbuf[3];
+	u8 pixbuf[3];
 	for(u32 i = 0; i < fb->sz.x*fb->sz.y; ++i) {
 		p = fb->buf[i];
 		pixbuf[0] = pixR(p);
@@ -307,7 +320,7 @@ int render_to_x_disp(Fbuf *fb, Display *disp) {
 	Window win;
 	XWindowAttributes attrs;
 	long evmask = StructureNotifyMask | ExposureMask | KeyPressMask | KeyReleaseMask;
-	uint32_t *buf;
+	u32 *buf;
 	XImage *img;
 	XEvent ev;
 	struct timespec dt = { 0, 166666667 };

@@ -51,6 +51,11 @@ typedef struct fbuf_t {
 	Pixel *buf;
 } Fbuf;
 
+typedef struct circle_t {
+	Vec2 r0;
+	u32 R;
+} Circle;
+
 /* Pixel ARGB access functions */
 static inline
 u8 pixA(Pixel p) {
@@ -220,6 +225,14 @@ void fb_draw_triangle(Fbuf *fb, Triangle S, Vec3Pixel P) {
 				fb_set_pix(fb, r, lerp(B, P));
 }
 
+void fb_draw_circle(Fbuf *fb, Circle S, Pixel p) {
+	UVec2 r;
+	for(r.y = 0; r.y < fb->sz.y; ++r.y)
+		for(r.x = 0; r.x < fb->sz.x; ++r.x)
+			if(i32square(r.y - S.r0.y) + i32square(r.x - S.r0.x) < i32square(S.R))
+				fb_set_pix(fb, r, p);
+}
+
 void ximgsetpix_bgra(XImage *img, size_t i, Pixel p) {
 	img->data[i  ] = pixB(p);
 	img->data[i+1] = pixG(p);
@@ -272,6 +285,7 @@ void draw(Fbuf *fb) {
 	};
 
 	fb_draw_triangle(fb, Nose, NoseColors);
+
 }
 
 void fb_to_ppm(FILE *f, Fbuf *fb) {
@@ -348,7 +362,7 @@ int render_to_x_disp(Fbuf *fb, Display *disp) {
 	)
 		return fprintf(stderr, "Invalid image format!\n"), -2;
 
-	Rect I1 = { {20, 140}, {20, 20} }, I2 = I1;
+	Circle I1 = { {40, 150}, 20 }, I2 = I1;
 	int dir = 1;
 	while(1) {
 		while(XCheckWindowEvent(disp, win, evmask, &ev)) {
@@ -365,18 +379,18 @@ int render_to_x_disp(Fbuf *fb, Display *disp) {
 				printf("Key release detected!\n");
 		}
 
-		fb_draw_rect(fb, I1, 0x00FF00);
-		fb_draw_rect(fb, I2, 0x00FF00);
+		fb_draw_circle(fb, I1, 0x00FF00);
+		fb_draw_circle(fb, I2, 0x00FF00);
 		if(dir) I1.r0.x += 10; else I1.r0.x -= 10;
-		if(I1.r0.x > 180 - (i32)I1.sz.x)
-			I1.r0.x = 180 - (i32)I1.sz.x,
+		if(I1.r0.x > 180 - (i32)I1.R)
+			I1.r0.x = 180 - (i32)I1.R,
 			dir = 0;
-		else if(I1.r0.x < 20)
-			I1.r0.x = 20,
+		else if(I1.r0.x < 40)
+			I1.r0.x = 40,
 			dir = 1;
-		I2 = fb_mirror_rect_x(fb, I1);
-		fb_draw_rect(fb, I1, 0x00007F);
-		fb_draw_rect(fb, I2, 0x00007F);
+		I2.r0.x = fb->sz.x - I1.r0.x;
+		fb_draw_circle(fb, I1, 0x00007F);
+		fb_draw_circle(fb, I2, 0x00007F);
 
 		fbtoximg(fb, img);
 		XPutImage(disp, win, DefaultGC(disp, DefaultScreen(disp)), img, 0, 0, 0, 0, fb->sz.x, fb->sz.y);

@@ -20,7 +20,6 @@ typedef uint32_t Pixel;
 
 #define U32MAX UINT32_MAX
 
-// TODO signed integers are a CPU bug and should not be used :P
 typedef struct vec2_t {
 	i32 x, y;
 } Vec2;
@@ -168,7 +167,7 @@ Pixel lerp(Vec3B B, Vec3Pixel P) {
 }
 
 // TODO faster function for monochrome triangles?
-void fb_draw_triangle(Fbuf *fb, Rect bound, Triangle S, Vec3Pixel P) {
+void fb_draw_triangle(Fbuf *fb, Triangle S, Vec3Pixel P) {
 	Vec2 dr1 = uvec2sub(S.r1, S.r0);
 	Vec2 dr2 = uvec2sub(S.r2, S.r0);
 	i32 D = vec2det(dr1, dr2);
@@ -177,17 +176,25 @@ void fb_draw_triangle(Fbuf *fb, Rect bound, Triangle S, Vec3Pixel P) {
 	Vec3B B;
 
 	for(
-		r.y = bound.r0.y, dr.y = (i32)r.y - (i32)S.r0.y;
-		r.y < bound.r0.y + bound.sz.y;
+		r.y = 0, dr.y = (i32)r.y - (i32)S.r0.y;
+		r.y < fb->sz.y;
 		++r.y, ++dr.y
 	)
 		for(
-			r.x = bound.r0.x, dr.x = (i32)r.x - (i32)S.r0.x;
-			r.x < bound.r0.x + bound.sz.x;
+			r.x = 0, dr.x = (i32)r.x - (i32)S.r0.x;
+			r.x < fb->sz.x;
 			++r.x, ++dr.x
 		)
 			if(!barycentric_coords(&B, D, vec2det(dr1, dr), vec2det(dr, dr2)))
 				fb_set_pix(fb, r, lerp(B, P));
+}
+
+u32 absdiff(u32 a, u32 b) {
+	return a > b ? a - b : b - a;
+}
+
+u64 u32square(u32 a) {
+	return (u64)a * (u64)a;
 }
 
 void ximgsetpix_bgra(XImage *img, size_t i, Pixel p) {
@@ -230,10 +237,6 @@ void draw(Fbuf *fb) {
 
 	fb_draw_parabola(fb, SmileBound, SmileOrigin, -256, SmileClr);
 
-	Rect FbBound = {
-		{0, 0},
-		fb->sz
-	};
 	Triangle Nose = {
 		{fb->sz.x/2, 160},
 		{(fb->sz.x/2) - 60, 210},
@@ -245,7 +248,7 @@ void draw(Fbuf *fb) {
 		0x7FFF3F,
 	};
 
-	fb_draw_triangle(fb, FbBound, Nose, NoseColors);
+	fb_draw_triangle(fb, Nose, NoseColors);
 }
 
 void fb_to_ppm(FILE *f, Fbuf *fb) {
@@ -322,13 +325,15 @@ int render_to_x_disp(Fbuf *fb, Display *disp) {
 	)
 		return fprintf(stderr, "Invalid image format!\n"), -2;
 
+	Rect I1 = { {20, 140}, {20, 20} }, I2 = I1;
+	int dir = 1;
 	while(1) {
 		while(XCheckWindowEvent(disp, win, evmask, &ev)) {
 			if(ev.type == DestroyNotify)
 				goto end;
 
 			if(ev.type == Expose)
-				XPutImage(disp, win, DefaultGC(disp, DefaultScreen(disp)), img, 0, 0, 0, 0, fb->sz.x, fb->sz.y);
+				(void)0;
 
 			if(ev.type == KeyPress)
 				printf("Key press detected!\n");
@@ -336,6 +341,23 @@ int render_to_x_disp(Fbuf *fb, Display *disp) {
 			if(ev.type == KeyRelease)
 				printf("Key release detected!\n");
 		}
+
+		fb_draw_rect(fb, I1, 0x00FF00);
+		fb_draw_rect(fb, I2, 0x00FF00);
+		if(dir) I1.r0.x += 10; else I1.r0.x -= 10;
+		if(I1.r0.x > 180 - I1.sz.x)
+			I1.r0.x = 180 - I1.sz.x,
+			dir = 0;
+		else if(I1.r0.x < 20)
+			I1.r0.x = 20,
+			dir = 1;
+		I2 = fb_mirror_rect_x(fb, I1);
+		fb_draw_rect(fb, I1, 0x00007F);
+		fb_draw_rect(fb, I2, 0x00007F);
+
+		fbtoximg(fb, img);
+		XPutImage(disp, win, DefaultGC(disp, DefaultScreen(disp)), img, 0, 0, 0, 0, fb->sz.x, fb->sz.y);
+
 		nanosleep(&dt, NULL);
 	}
 

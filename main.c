@@ -131,13 +131,8 @@ void i32signrestrict(i32 *r, i32 *x1, i32 *x2) {
 }
 
 static inline
-i32 i32square(i32 x) {
-	return x*x;
-}
-
-static inline
-u32 u32chkaddoverflow(u32 a, u32 b) {
-	return a + b < a;
+u64 i32square(i32 x) {
+	return (u64)((i64)x*(i64)x);
 }
 
 /* Vector Operations */
@@ -156,6 +151,7 @@ Vec2 uv2v2sub(UVec2 r0, Vec2 r1) {
 	return (Vec2) {(i32)r0.x - r1.x, (i32)r0.y - r1.y};
 }
 
+static
 i32x2 i32minmax3partial(i32 x, i32 y, i32 z) {
 	if(y < z)
 		return (i32x2) {x, z};
@@ -165,6 +161,7 @@ i32x2 i32minmax3partial(i32 x, i32 y, i32 z) {
 		return (i32x2) {z, y};
 }
 
+static inline
 i32x2 i32minmax3(i32 x, i32 y, i32 z) {
 	return (x < y)
 		? i32minmax3partial(x, y, z)
@@ -172,6 +169,7 @@ i32x2 i32minmax3(i32 x, i32 y, i32 z) {
 	;
 }
 
+static
 UVec2x2 xy2x2restrict(UVec2 fbsz, i32x2 X, i32x2 Y) {
 	return (UVec2x2) {
 		{
@@ -184,6 +182,7 @@ UVec2x2 xy2x2restrict(UVec2 fbsz, i32x2 X, i32x2 Y) {
 	};
 }
 
+static
 UVec2x2 triangle_bound(UVec2 fbsz, Triangle S) {
 	return xy2x2restrict(
 		fbsz,
@@ -192,6 +191,7 @@ UVec2x2 triangle_bound(UVec2 fbsz, Triangle S) {
 	);
 }
 
+static
 UVec2x2 rect_bound(UVec2 fbsz, Rect S) {
 	return (UVec2x2) {
 		{
@@ -246,40 +246,64 @@ typedef enum ptstatus_e {
 	PT_OUT = -1
 } PtStatus;
 
-// find barycentric coordinates from given determinants
-PtStatus getlerpweights(Vec3B *B, i32 D, i32 D1, i32 D2) {
+PtStatus getptstatus(i32 D, i32 D1, i32 D2) {
 	i32signrestrict(&D, &D1, &D2);
-
 	if(D1 < 0 || D2 < 0) return PT_OUT;
-	if(D1 > D || D2 > D) return PT_OUT;
-
-	B->b1 = ((i64)D1 * (i64)U32MAX) / (i64)D;
-	B->b2 = ((i64)D2 * (i64)U32MAX) / (i64)D;
-	B->b0 = U32MAX - B->b1 - B->b2;
-
-	if(u32chkaddoverflow(B->b1, B->b2)) return PT_OUT;
+	if((u32)D1 + (u32)D2 > (u32)D) return PT_OUT;
 	return PT_IN;
 }
 
-static inline
-PtStatus getlerpweights_dr(Vec3B *B, i32 D, Vec2 dr, Vec2 dr1, Vec2 dr2) {
-	return getlerpweights(B, D, vec2det(dr1, dr), vec2det(dr, dr2));
+Vec3B getlerpweights(i32 D, i32 D1, i32 D2) {
+	Vec3B B;
+	B.b1 = ((i64)D1 * (i64)U32MAX) / (i64)D;
+	B.b2 = ((i64)D2 * (i64)U32MAX) / (i64)D;
+	B.b0 = U32MAX - B.b1 - B.b2;
+
+	return B;
 }
 
-// TODO faster function for monochrome triangles?
-void fb_draw_triangle(Fbuf fb, Triangle S, Vec3Pixel P) {
-	Vec3B weights;
+static
+void fb_set_pix_chk(Fbuf fb, UVec2 r, Pixel p, i32 D, i32 D1, i32 D2) {
+	if(getptstatus(D, D1, D2) == PT_IN)
+		fb_set_pix(fb, r, p);
+}
 
-	UVec2x2 bound = triangle_bound(fb.sz, S);
+static
+void fb_set_pix_chk_dr(Fbuf fb, UVec2 r, Pixel p, i32 D, Vec2 dr, Vec2 dr1, Vec2 dr2) {
+	fb_set_pix_chk(fb, r, p, D, vec2det(dr1, dr), vec2det(dr, dr2));
+}
+
+void fb_draw_triangle_monochrome(Fbuf fb, Triangle S, Pixel p) {
 	S.r1 = vec2sub(S.r1, S.r0);
 	S.r2 = vec2sub(S.r2, S.r0);
 	i32 D = vec2det(S.r1, S.r2);
 
 	UVec2 r;
-	for(r.y = bound.v0.y; r.y < bound.v1.y; ++r.y)
-		for(r.x = bound.v0.x; r.x < bound.v1.x; ++r.x)
-			if(getlerpweights_dr(&weights, D, uv2v2sub(r, S.r0), S.r1, S.r2) == PT_IN)
-				fb_set_pix(fb, r, lerp(weights, P));
+	for(r.y = 0; r.y < fb.sz.y; ++r.y)
+		for(r.x = 0; r.x < fb.sz.x; ++r.x)
+			fb_set_pix_chk_dr(fb, r, p, D, uv2v2sub(r, S.r0), S.r1, S.r2);
+}
+
+static
+void fb_set_pix_lerped(Fbuf fb, UVec2 r, Vec3Pixel P, i32 D, i32 D1, i32 D2) {
+	if(getptstatus(D, D1, D2) == PT_IN)
+		fb_set_pix(fb, r, lerp(getlerpweights(D, D1, D2), P));
+}
+
+static
+void fb_set_pix_lerped_dr(Fbuf fb, UVec2 r, Vec3Pixel P, i32 D, Vec2 dr, Vec2 dr1, Vec2 dr2) {
+	fb_set_pix_lerped(fb, r, P, D, vec2det(dr1, dr), vec2det(dr, dr2));
+}
+
+void fb_draw_triangle(Fbuf fb, Triangle S, Vec3Pixel P) {
+	S.r1 = vec2sub(S.r1, S.r0);
+	S.r2 = vec2sub(S.r2, S.r0);
+	i32 D = vec2det(S.r1, S.r2);
+
+	UVec2 r;
+	for(r.y = 0; r.y < fb.sz.y; ++r.y)
+		for(r.x = 0; r.x < fb.sz.x; ++r.x)
+			fb_set_pix_lerped_dr(fb, r, P, D, uv2v2sub(r, S.r0), S.r1, S.r2);
 }
 
 static
@@ -290,11 +314,11 @@ Rect fb_mirror_rect_x(Fbuf fb, Rect R) {
 	};
 }
 
-void fb_draw_parabola_bounded(Fbuf fb, Rect bound, UVec2 origin, i32 a, Pixel p) {
+void fb_draw_parabola_bounded(Fbuf fb, Rect bound, Vec2 origin, i32 a, Pixel p) {
 	UVec2 r;
 	for(r.y = bound.r0.y; r.y < bound.r0.y + bound.sz.y; ++r.y)
 		for(r.x = bound.r0.x; r.x < bound.r0.x + bound.sz.x; ++r.x)
-			if (a*((i32)r.y - (i32)origin.y) > i32square(r.x - origin.x))
+			if ((i64)a*((i64)r.y - (i64)origin.y) > (i64)i32square(r.x - origin.x))
 				fb_set_pix(fb, r, p);
 }
 
@@ -473,7 +497,7 @@ void draw(Fbuf fb) {
 		{fb.sz.x, fb.sz.y/3}
 	};
 
-	UVec2 SmileOrigin = {fb.sz.x/2, 5*fb.sz.y/6};
+	Vec2 SmileOrigin = {fb.sz.x/2, 5*fb.sz.y/6};
 	Pixel SmileClr = 0xFF0000;
 
 	fb_draw_parabola_bounded(fb, SmileBound, SmileOrigin, -256, SmileClr);
@@ -512,18 +536,23 @@ void draw(Fbuf fb) {
 	BrowRight.r0.x = fb.sz.x - BrowLeft.r0.x;
 	BrowRight.r1.x = fb.sz.x - BrowLeft.r1.x;
 	BrowRight.r2.x = fb.sz.x - BrowLeft.r2.x;
+
+	/*
 	Vec3Pixel BrowColor = {
 		0x7F7F00,
 		0x3F3F00,
 		0x3F3F00,
 	};
-	fb_draw_triangle(fb, BrowLeft, BrowColor);
-	fb_draw_triangle(fb, BrowRight, BrowColor);
+	*/
+	Pixel BrowColor = 0x7F3F00;
+
+	fb_draw_triangle_monochrome(fb, BrowLeft, BrowColor);
+	fb_draw_triangle_monochrome(fb, BrowRight, BrowColor);
 }
 
 int main() {
-	enum win_width_e { WIDTH = 640 };
-	enum win_height_e { HEIGHT = 480 };
+	enum win_width_e { WIDTH = 1920 };
+	enum win_height_e { HEIGHT = 1080 };
 
 	static Pixel fbufdata[HEIGHT*WIDTH] = {0};
 

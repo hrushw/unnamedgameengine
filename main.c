@@ -358,60 +358,26 @@ void render_to_x_win_img(
 		fb_draw_circle(fb, EyeballRight, 0x00007F);
 
 		fbtoximg(fb, img);
-		/* the processing gap between the event handler and XPutImage means *
-		 * that this may be called before window destruction is detected */
 		XPutImage(disp, win, DefaultGC(disp, DefaultScreen(disp)), img, 0, 0, 0, 0, fb.sz.x, fb.sz.y);
 
 		nanosleep(&dt, NULL);
 	}
 }
 
-int crwin_x(
-	Window *win, XWindowAttributes *attrs,
-	Display *disp,
-	unsigned long width, unsigned long height
-) {
-	long evmask = StructureNotifyMask | ExposureMask | KeyPressMask | KeyReleaseMask;
-	XVisualInfo vinfo = {0};
-	XSetWindowAttributes xswattrs = {
-		.background_pixel = BlackPixel(disp, DefaultScreen(disp)),
-		.event_mask = evmask
-	};
-
-	if(!XMatchVisualInfo(disp, DefaultScreen(disp), 24, TrueColor, &vinfo))
-		return fprintf(stderr, "Unable to get proper visual!\n"), -1;
-
-	*win = XCreateWindow(
-		disp, DefaultRootWindow(disp),
-		0, 0, width, height,
-		0, 24, InputOutput,
-		vinfo.visual, CWEventMask | CWBackPixel, &xswattrs
-	);
-	XGetWindowAttributes(disp, *win, attrs);
-
-	XMapWindow(disp, *win);
-	return 0;
-}
-
 int render_to_x_win(
 	Fbuf fb, Display *disp, Window win,
-	XWindowAttributes attrs
+	long evmask, XImage *img
 ) {
-	XImage *img = XCreateImage(
-		disp, attrs.visual, attrs.depth, ZPixmap, 0,
-		calloc(fb.sz.y*fb.sz.x, 4),
-		fb.sz.x, fb.sz.y, 32, 0
-	);
+	if(!img) return -1;
 	XInitImage(img);
-	if(
-		   img->bits_per_pixel != 32
+
+	if(img->bits_per_pixel != 32
 		|| img->red_mask != 0xFF0000
 		|| img->blue_mask != 0xFF
 		|| img->green_mask != 0xFF00
-	)
-		return fprintf(stderr, "Invalid image format!\n"), -1;
+	) return fprintf(stderr, "Invalid image format!\n"), -2;
 
-	render_to_x_win_img(fb, disp, win, img, attrs.your_event_mask);
+	render_to_x_win_img(fb, disp, win, img, evmask);
 
 	free(img->data);
 	// don't touch my data Xlib you disgusting creature, you did not allocate it
@@ -421,22 +387,76 @@ int render_to_x_win(
 	return 0;
 }
 
-int render_to_x_disp(Fbuf fb, Display *disp) {
-	Window win;
-	XWindowAttributes attrs;
+typedef enum possible_errors_x_e {
+	ERR_SUCCESS = 0,
+	ERR_OPEN_DISPLAY,
+	ERR_GET_VISUAL,
+	ERR_CR_WIN,
+	ERR_GETWINATTRS,
+	ERR_MAP_WIN
+} WIN_ERROR_X;
 
-	if(crwin_x(&win, &attrs, disp, fb.sz.x, fb.sz.y))
-		return -1;
-	return render_to_x_win(fb, disp, win, attrs);
+int getvis_x(Visual **vis, Display *disp) {
+	XVisualInfo vinfo = {0};
+
+	if(!XMatchVisualInfo(disp, DefaultScreen(disp), 24, TrueColor, &vinfo))
+		return ERR_GET_VISUAL;
+
+	*vis = vinfo.visual;
+	return ERR_SUCCESS;
+}
+
+int crwin_x(
+	Window *win, XWindowAttributes *attrs,
+	Display *disp, Visual *vis,
+	unsigned long width, unsigned long height
+) {
+	XSetWindowAttributes xswattrs = {
+		.background_pixel = BlackPixel(disp, DefaultScreen(disp)),
+		.event_mask = StructureNotifyMask | ExposureMask | KeyPressMask | KeyReleaseMask
+	};
+
+	*win = XCreateWindow(
+		disp, DefaultRootWindow(disp),
+		0, 0, width, height,
+		0, 24, InputOutput,
+		vis, CWEventMask | CWBackPixel, &xswattrs
+	);
+	if(!win) return ERR_CR_WIN;
+
+	if(!XGetWindowAttributes(disp, *win, attrs))
+		return ERR_GETWINATTRS;
+
+	if(!XMapWindow(disp, *win))
+		return ERR_MAP_WIN;
+	return 0;
 }
 
 int render_to_x(Fbuf fb) {
-	Display *disp = XOpenDisplay(NULL);
+	Display *disp;
+	Visual *vis;
+	Window win;
+	XWindowAttributes attrs;
+	int ret;
 
-	if(!disp)
-		return fprintf(stderr, "Unable to open display!\n"), -1;
+	if(!(disp = XOpenDisplay(NULL)))
+		return ERR_OPEN_DISPLAY;
 
-	int ret = render_to_x_disp(fb, disp);
+	if((ret = getvis_x(&vis, disp)) != ERR_SUCCESS)
+		goto end;
+
+	if(!(ret = crwin_x(&win, &attrs, disp, vis, fb.sz.x, fb.sz.y)))
+		ret = render_to_x_win(
+			fb, disp, win,
+			attrs.your_event_mask,
+			XCreateImage(
+				disp, attrs.visual, attrs.depth, ZPixmap, 0,
+				calloc(fb.sz.y*fb.sz.x, 4),
+				fb.sz.x, fb.sz.y, 32, 0
+			)
+		);
+
+	end:
 	XCloseDisplay(disp);
 	return ret;
 }

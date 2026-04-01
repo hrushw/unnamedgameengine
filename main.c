@@ -119,25 +119,10 @@ Pixel fb_get_pix(Fbuf fb, UVec2 r) {
 	return fb.buf[r.y*fb.sz.x + r.x];
 }
 
-static inline
-u64 i32square(i32 x) {
-	return (u64)((i64)x*(i64)x);
-}
-
 /* Vector Operations */
 static inline
 i32 vec2det(Vec2 v0, Vec2 v1) {
 	return v0.x*v1.y - v1.x*v0.y;
-}
-
-static inline
-Vec2 vec2sub(Vec2 r0, Vec2 r1) {
-	return (Vec2) {r0.x - r1.x, r0.y - r1.y};
-}
-
-static inline
-Vec2 uv2v2sub(UVec2 r0, Vec2 r1) {
-	return (Vec2) {(i32)r0.x - r1.x, (i32)r0.y - r1.y};
 }
 
 /* Linear interpolation functions */
@@ -189,6 +174,11 @@ void fb_draw_rect(Fbuf fb, Rect S, Pixel p) {
 	fb_draw_rect_uvec2x2(fb, rect_bound_uvec2x2(fb, S), p);
 }
 
+static inline
+u64 i32square(i32 x) {
+	return (u64)((i64)x*(i64)x);
+}
+
 void fb_draw_circle(Fbuf fb, Circle S, Pixel p) {
 	UVec2 r;
 	for(r.y = 0; r.y < fb.sz.y; ++r.y)
@@ -211,32 +201,22 @@ UVec3B getlerpweights(i32 D, i32 D1, i32 D2) {
 	return B;
 }
 
-static
-void fb_set_pix_lerped(Fbuf fb, UVec2 r, Vec3Pixel P, i32 D, i32 D1, i32 D2) {
-	if(checkptstatus(D, D1, D2))
-		fb_set_pix(fb, r, lerp(getlerpweights(D, D1, D2), P));
-}
-
 void fb_draw_triangle(Fbuf fb, Pixel p, Vec2 r0, Vec2 r1, Vec2 r2) {
-	r1 = vec2sub(r1, r0);
-	r2 = vec2sub(r2, r0);
-
-	i32 D = vec2det(r1, r2);
 	i32 D1 = - vec2det(r0, r2);
 	i32 D2 = - vec2det(r1, r0);
+	i32 D = vec2det(r1, r2) + D1 + D2;
 	if(!D) return;
 
+	r1.y -= r0.y;
+	r2.y -= r0.y;
+	r1.x += fb.sz.x*r1.y - r0.x;
+	r2.x += fb.sz.x*r2.y - r0.x;
+
 	UVec2 r;
-	for(r.y = 0; r.y < fb.sz.y; ++r.y) {
-		for(r.x = 0; r.x < fb.sz.x; ++r.x) {
+	for(r.y = 0; r.y < fb.sz.y; ++r.y, D1 -= r2.x, D2 += r1.x)
+		for(r.x = 0; r.x < fb.sz.x; ++r.x, D1 += r2.y, D2 -= r1.y)
 			if(checkptstatus(D, D1, D2))
 				fb_set_pix(fb, r, p);
-			D1 += r2.y;
-			D2 -= r1.y;
-		}
-		D1 = D1 - (fb.sz.x*r2.y) - r2.x;
-		D2 = D2 + (fb.sz.x*r1.y) + r1.x;
-	}
 }
 
 void fb_draw_quad(Fbuf fb, Quad S, Pixel p) {
@@ -255,25 +235,21 @@ void fb_draw_array_fan(Fbuf fb, Pixel p, size_t n, Vec2 *pts) {
 }
 
 void fb_draw_triangle_lerped(Fbuf fb, Triangle S, Vec3Pixel P) {
-	S.r1 = vec2sub(S.r1, S.r0);
-	S.r2 = vec2sub(S.r2, S.r0);
-
-	i32 D = vec2det(S.r1, S.r2);
 	i32 D1 = - vec2det(S.r0, S.r2);
 	i32 D2 = - vec2det(S.r1, S.r0);
-
+	i32 D = vec2det(S.r1, S.r2) + D1 + D2;
 	if(!D) return;
 
+	S.r1.y -= S.r0.y;
+	S.r2.y -= S.r0.y;
+	S.r1.x += fb.sz.x*S.r1.y - S.r0.x;
+	S.r2.x += fb.sz.x*S.r2.y - S.r0.x;
+
 	UVec2 r;
-	for(r.y = 0; r.y < fb.sz.y; ++r.y) {
-		for(r.x = 0; r.x < fb.sz.x; ++r.x) {
-			fb_set_pix_lerped(fb, r, P, D, D1, D2);
-			D1 += S.r2.y;
-			D2 -= S.r1.y;
-		}
-		D1 = D1 - (fb.sz.x*S.r2.y) - S.r2.x;
-		D2 = D2 + (fb.sz.x*S.r1.y) + S.r1.x;
-	}
+	for(r.y = 0; r.y < fb.sz.y; ++r.y, D1 -= S.r2.x, D2 += S.r1.x)
+		for(r.x = 0; r.x < fb.sz.x; ++r.x, D1 += S.r2.y, D2 -= S.r1.y)
+			if(checkptstatus(D, D1, D2))
+				fb_set_pix(fb, r, lerp(getlerpweights(D, D1, D2), P));
 }
 
 static

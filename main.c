@@ -6,8 +6,12 @@
 
 #include <time.h>
 
+#include <sys/ipc.h>
+#include <sys/shm.h>
+
 #include <X11/Xlib.h>
 #include <X11/Xutil.h>
+#include <X11/extensions/XShm.h>
 
 // TODO win32
 // TODO line drawing
@@ -419,6 +423,10 @@ int render_to_x_win(
 	render_to_x_win_img(fb, disp, win, img, attrs.your_event_mask);
 
 	free(img->data);
+	// don't touch my data Xlib you disgusting creature, you did not allocate it
+	img->data = NULL;
+
+	XDestroyImage(img);
 	return 0;
 }
 

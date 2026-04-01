@@ -15,6 +15,7 @@
 
 // TODO win32
 // TODO line drawing
+// TODO rotation
 
 typedef uint8_t u8;
 typedef uint32_t u32;
@@ -34,10 +35,6 @@ typedef Vec2 i32Complex;
 typedef struct uvec2_t {
 	u32 x, y;
 } UVec2;
-
-typedef struct i32x2_t {
-	int32_t n0, n1;
-} i32x2;
 
 typedef struct uvec2x2_t {
 	UVec2 r0, r1;
@@ -277,10 +274,10 @@ Rect fb_mirror_rect_x(Fbuf fb, Rect R) {
 	};
 }
 
-void fb_draw_parabola_bounded(Fbuf fb, Rect bound, Vec2 origin, i32 a, Pixel p) {
+void fb_draw_parabola_bounded(Fbuf fb, UVec2x2 bound, Vec2 origin, i32 a, Pixel p) {
 	UVec2 r;
-	for(r.y = bound.r0.y; r.y < bound.r0.y + bound.sz.y; ++r.y)
-		for(r.x = bound.r0.x; r.x < bound.r0.x + bound.sz.x; ++r.x)
+	for(r.y = bound.r0.y; r.y < bound.r1.y; ++r.y)
+		for(r.x = bound.r0.x; r.x < bound.r1.x; ++r.x)
 			if ((i64)a*((i64)r.y - (i64)origin.y) > (i64)i32square(r.x - origin.x))
 				fb_set_pix(fb, r, p);
 }
@@ -469,9 +466,9 @@ void draw(Fbuf fb) {
 	Pixel EyeRightClr = 0x00CF3F;
 	fb_draw_quad(fb, EyeRightQuad, EyeRightClr);
 
-	Rect SmileBound = {
+	UVec2x2 SmileBound = {
 		{0, fb.sz.y/2},
-		{fb.sz.x, fb.sz.y/3}
+		{fb.sz.x, 5*fb.sz.y/6}
 	};
 
 	Vec2 SmileOrigin = {fb.sz.x/2, 5*fb.sz.y/6};

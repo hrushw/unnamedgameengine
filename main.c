@@ -155,6 +155,11 @@ void fb_draw_triangle(Fbuf fb, Pixel p, Vec2 r0, Vec2 r1, Vec2 r2) {
 }
 
 static
+void fb_draw_triangle_arr(Fbuf fb, Pixel p, Triangle S) {
+	fb_draw_triangle(fb, p, S[0], S[1], S[2]);
+}
+
+static
 void fb_draw_quad(Fbuf fb, Pixel p, Quad q) {
 	fb_draw_triangle(fb, p, q[0], q[1], q[2]);
 	fb_draw_triangle(fb, p, q[0], q[3], q[2]);
@@ -394,7 +399,7 @@ void draw(Fbuf fb) {
 	};
 
 	Pixel NoseColor = 0xFFFF00;
-	fb_draw_triangle(fb, NoseColor, Nose[0], Nose[1], Nose[2]);
+	fb_draw_triangle_arr(fb, NoseColor, Nose);
 
 	fb_draw_rect(fb, 0xFF00FF, (Vec2) {-200, -300}, (UVec2) {100, 200});
 
@@ -415,8 +420,8 @@ void draw(Fbuf fb) {
 	};
 
 	Pixel BrowColor = 0x7F3F00;
-	fb_draw_triangle(fb, BrowColor, BrowLeft[0], BrowLeft[1], BrowLeft[2]);
-	fb_draw_triangle(fb, BrowColor, BrowRight[0], BrowRight[1], BrowRight[2]);
+	fb_draw_triangle_arr(fb, BrowColor, BrowLeft);
+	fb_draw_triangle_arr(fb, BrowColor, BrowRight);
 }
 
 int main() {

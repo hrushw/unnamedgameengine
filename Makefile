@@ -6,7 +6,7 @@ win: main.c
 	$(CC) $(CFLAGS) $(LFLAGS) -o win main.c
 
 clean:
-	rm -f win *.o
+	rm -f win *.o *.ppm *.png
 
 run: win
 	./win

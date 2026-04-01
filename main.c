@@ -32,10 +32,6 @@ typedef struct uvec2_t {
 	u32 x, y;
 } UVec2;
 
-typedef struct uvec2x2_t {
-	UVec2 r0, r1;
-} UVec2x2;
-
 typedef struct fbuf_t {
 	UVec2 	sz;
 	Pixel *buf;
@@ -45,19 +41,6 @@ typedef struct rect_t {
 	Vec2 r0;
 	UVec2 sz;
 } Rect;
-
-typedef struct triangle_t {
-	Vec2 r0, r1, r2;
-} Triangle;
-
-typedef struct quad_t {
-	Vec2 r0, r1, r2, r3;
-} Quad;
-
-typedef struct circle_t {
-	Vec2 r0;
-	u32 R;
-} Circle;
 
 i32Complex i32complex_mul_norm(i32Complex z1, i32Complex z2) {
 	return (i32Complex) {
@@ -151,11 +134,11 @@ u64 i32square(i32 x) {
 	return (u64)((i64)x*(i64)x);
 }
 
-void fb_draw_circle(Fbuf fb, Circle S, Pixel p) {
+void fb_draw_circle(Fbuf fb, Pixel p, u32 R, Vec2 r0) {
 	UVec2 r;
 	for(r.y = 0; r.y < fb.sz.y; ++r.y)
 		for(r.x = 0; r.x < fb.sz.x; ++r.x)
-			if(i32square(r.y - S.r0.y) + i32square(r.x - S.r0.x) < i32square(S.R))
+			if(i32square(r.y - r0.y) + i32square(r.x - r0.x) < i32square(R))
 				fb_set_pix(fb, r, p);
 }
 
@@ -182,9 +165,9 @@ void fb_draw_triangle(Fbuf fb, Pixel p, Vec2 r0, Vec2 r1, Vec2 r2) {
 				fb_set_pix(fb, r, p);
 }
 
-void fb_draw_quad(Fbuf fb, Quad S, Pixel p) {
-	fb_draw_triangle(fb, p, S.r0, S.r1, S.r2);
-	fb_draw_triangle(fb, p, S.r0, S.r3, S.r2);
+void fb_draw_quad(Fbuf fb, Pixel p, Vec2 r0, Vec2 r1, Vec2 r2, Vec2 r3) {
+	fb_draw_triangle(fb, p, r0, r1, r2);
+	fb_draw_triangle(fb, p, r0, r3, r2);
 }
 
 void fb_draw_polygon_strip(Fbuf fb, Pixel p, size_t n, Vec2 *pts) {
@@ -271,23 +254,25 @@ void render_to_x_win_img(
 	XImage *img, long evmask
 ) {
 	struct timespec dt = { 0, 166666667 };
-	Circle EyeballLeft = { {fb.sz.x/16, 5*fb.sz.y/16}, fb.sz.x/32 }, EyeballRight = EyeballLeft;
-	EyeballRight.r0.x = fb.sz.x - EyeballLeft.r0.x;
+	Vec2 EyeballLeftOrigin = {fb.sz.x/16, 5*fb.sz.y/16};
+	u32 EyeRadius = fb.sz.x/32;
+	Vec2 EyeballRightOrigin = EyeballLeftOrigin;
+	EyeballRightOrigin.x = fb.sz.x - EyeballLeftOrigin.x;
 	int dir = 1;
 	while(!handle_events_x(disp, win, evmask)) {
 		// Eye motion logic
-		fb_draw_circle(fb, EyeballLeft, 0x00FF00);
-		fb_draw_circle(fb, EyeballRight, 0x00CF3F);
-		if(dir) EyeballLeft.r0.x += 10; else EyeballLeft.r0.x -= 10;
-		if(EyeballLeft.r0.x > 9*(i32)fb.sz.x/32 - (i32)EyeballLeft.R)
-			EyeballLeft.r0.x = 9*fb.sz.x/32 - (i32)EyeballLeft.R,
+		fb_draw_circle(fb, 0x00FF00, EyeRadius, EyeballLeftOrigin);
+		fb_draw_circle(fb, 0x00CF3F, EyeRadius, EyeballRightOrigin);
+		if(dir) EyeballLeftOrigin.x += 10; else EyeballLeftOrigin.x -= 10;
+		if(EyeballLeftOrigin.x > 9*(i32)fb.sz.x/32 - (i32)EyeRadius)
+			EyeballLeftOrigin.x = 9*fb.sz.x/32 - (i32)EyeRadius,
 			dir = 0;
-		else if(EyeballLeft.r0.x < (i32)fb.sz.x/16)
-			EyeballLeft.r0.x = fb.sz.x/16,
+		else if(EyeballLeftOrigin.x < (i32)fb.sz.x/16)
+			EyeballLeftOrigin.x = fb.sz.x/16,
 			dir = 1;
-		EyeballRight.r0.x = fb.sz.x - EyeballLeft.r0.x;
-		fb_draw_circle(fb, EyeballLeft, 0x00007F);
-		fb_draw_circle(fb, EyeballRight, 0x00007F);
+		EyeballRightOrigin.x = fb.sz.x - EyeballLeftOrigin.x;
+		fb_draw_circle(fb, 0x00007F, EyeRadius, EyeballLeftOrigin);
+		fb_draw_circle(fb, 0x00007F, EyeRadius, EyeballRightOrigin);
 
 		fbtoximg(fb, img);
 		XPutImage(disp, win, DefaultGC(disp, DefaultScreen(disp)), img, 0, 0, 0, 0, fb.sz.x, fb.sz.y);
@@ -374,14 +359,14 @@ void draw(Fbuf fb) {
 		(i32)fb.sz.x - EyeLeft.r0.x - EyeLeft.sz.x,
 		EyeLeft.r0.y
 	};
-	Quad EyeRightQuad = {
+	Vec2 EyeRightQuad[4] = {
 		EyeRightOrigin,
 		{ EyeRightOrigin.x - fb.sz.x/64,   EyeRightOrigin.y + EyeLeft.sz.y },
 		{ EyeRightOrigin.x + EyeLeft.sz.x, EyeRightOrigin.y + EyeLeft.sz.y - fb.sz.x/32 },
 		{ EyeRightOrigin.x + EyeLeft.sz.x, EyeRightOrigin.y },
 	};
 	Pixel EyeRightClr = 0x00CF3F;
-	fb_draw_quad(fb, EyeRightQuad, EyeRightClr);
+	fb_draw_quad(fb, EyeRightClr, EyeRightQuad[0], EyeRightQuad[1], EyeRightQuad[2], EyeRightQuad[3]);
 
 	Vec2 Smilepts[] = {
 		{fb.sz.x/2, fb.sz.y/2},
@@ -402,21 +387,16 @@ void draw(Fbuf fb) {
 
 	fb_draw_polygon_fan(fb, SmileClr, sizeof(Smilepts)/sizeof(Vec2), Smilepts);
 
-	Triangle Nose = {
+	Vec2 Nose[3] = {
 		{fb.sz.x/2, fb.sz.y/3},
 		{13*fb.sz.x/32, 7*fb.sz.y/16},
 		{19*fb.sz.x/32, 7*fb.sz.y/16},
 	};
 
 	Pixel NoseColor = 0xFFFF00;
-	fb_draw_triangle(fb, NoseColor, Nose.r0, Nose.r1, Nose.r2);
+	fb_draw_triangle(fb, NoseColor, Nose[0], Nose[1], Nose[2]);
 
-	Rect outofboundrect = {
-		{ -200, -300 },
-		{ 100, 200 }
-	};
-
-	fb_draw_rect(fb, 0xFF00FF, outofboundrect.r0, outofboundrect.sz);
+	fb_draw_rect(fb, 0xFF00FF, (Vec2) {-200, -300}, (UVec2) {100, 200});
 
 	Rect Goatee = {
 		{ 7*fb.sz.x/16, 7*fb.sz.y/8 },
@@ -424,18 +404,22 @@ void draw(Fbuf fb) {
 	};
 	fb_draw_rect(fb, 0xFFFFFF, Goatee.r0, Goatee.sz);
 
-	Triangle BrowLeft = {
+	Vec2 BrowLeft[3] = {
 		{ 5*fb.sz.x/32, (i32)fb.sz.y/12 },
 		{ fb.sz.x/32, -1*(i32)fb.sz.y/24 },
 		{ 9*fb.sz.x/32, -1*(i32)fb.sz.y/24 },
-	}, BrowRight = BrowLeft;
-	BrowRight.r0.x = fb.sz.x - BrowLeft.r0.x;
-	BrowRight.r1.x = fb.sz.x - BrowLeft.r1.x;
-	BrowRight.r2.x = fb.sz.x - BrowLeft.r2.x;
+	}, BrowRight[3];
+	BrowRight[0].x = fb.sz.x - BrowLeft[0].x;
+	BrowRight[1].x = fb.sz.x - BrowLeft[1].x;
+	BrowRight[2].x = fb.sz.x - BrowLeft[2].x;
+
+	BrowRight[0].y = BrowLeft[0].y;
+	BrowRight[1].y = BrowLeft[1].y;
+	BrowRight[2].y = BrowLeft[2].y;
 
 	Pixel BrowColor = 0x7F3F00;
-	fb_draw_triangle(fb, BrowColor, BrowLeft.r0, BrowLeft.r1, BrowLeft.r2);
-	fb_draw_triangle(fb, BrowColor, BrowRight.r0, BrowRight.r1, BrowRight.r2);
+	fb_draw_triangle(fb, BrowColor, BrowLeft[0], BrowLeft[1], BrowLeft[2]);
+	fb_draw_triangle(fb, BrowColor, BrowRight[0], BrowRight[1], BrowRight[2]);
 }
 
 int main() {

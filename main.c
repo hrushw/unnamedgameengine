@@ -50,10 +50,6 @@ typedef struct rect_t {
 	UVec2 sz;
 } Rect;
 
-typedef struct uvec3b_t {
-	u32 b0, b1, b2;
-} UVec3B;
-
 typedef struct triangle_t {
 	Vec2 r0, r1, r2;
 } Triangle;
@@ -61,10 +57,6 @@ typedef struct triangle_t {
 typedef struct quad_t {
 	Vec2 r0, r1, r2, r3;
 } Quad;
-
-typedef struct vec3_pixel_t {
-	Pixel p0, p1, p2;
-} Vec3Pixel;
 
 typedef struct circle_t {
 	Vec2 r0;
@@ -121,28 +113,8 @@ Pixel fb_get_pix(Fbuf fb, UVec2 r) {
 
 /* Vector Operations */
 static inline
-i32 vec2det(Vec2 v0, Vec2 v1) {
-	return v0.x*v1.y - v1.x*v0.y;
-}
-
-/* Linear interpolation functions */
-static
-u8 u8lerp(UVec3B B, u8 x0, u8 x1, u8 x2) {
-	return (
-		(u64)x0*(u64)B.b0 +
-		(u64)x1*(u64)B.b1 +
-		(u64)x2*(u64)B.b2
-	) >> 31;
-}
-
-static
-Pixel lerp(UVec3B B, Vec3Pixel P) {
-	return argb_to_pixel(
-		u8lerp(B, pixA(P.p0), pixA(P.p1), pixA(P.p2)),
-		u8lerp(B, pixR(P.p0), pixR(P.p1), pixR(P.p2)),
-		u8lerp(B, pixG(P.p0), pixG(P.p1), pixG(P.p2)),
-		u8lerp(B, pixB(P.p0), pixB(P.p1), pixB(P.p2))
-	);
+i64 vec2det(Vec2 v0, Vec2 v1) {
+	return (i64)v0.x*(i64)v1.y - (i64)v1.x*(i64)v0.y;
 }
 
 /* Drawing functions */
@@ -187,24 +159,15 @@ void fb_draw_circle(Fbuf fb, Circle S, Pixel p) {
 				fb_set_pix(fb, r, p);
 }
 
-bool checkptstatus(i32 D, i32 D1, i32 D2) {
+bool checkptstatus(i64 D, i64 D1, i64 D2) {
 	if(D < 0) D = -D, D1 = -D1, D2 = -D2;
-	return !(D1 < 0 || D2 < 0 || (u32)D1 + (u32)D2 > (u32)D);
-}
-
-UVec3B getlerpweights(i32 D, i32 D1, i32 D2) {
-	UVec3B B;
-	B.b1 = ((i64)D1 << 31) / (i64)D;
-	B.b2 = ((i64)D2 << 31) / (i64)D;
-	B.b0 = (1 << 31) - B.b1 - B.b2;
-
-	return B;
+	return !(D1 < 0 || D2 < 0 || (u64)D1 + (u64)D2 > (u64)D);
 }
 
 void fb_draw_triangle(Fbuf fb, Pixel p, Vec2 r0, Vec2 r1, Vec2 r2) {
-	i32 D1 = - vec2det(r0, r2);
-	i32 D2 = - vec2det(r1, r0);
-	i32 D = vec2det(r1, r2) + D1 + D2;
+	i64 D1 = - vec2det(r0, r2);
+	i64 D2 = - vec2det(r1, r0);
+	i64 D = vec2det(r1, r2) + D1 + D2;
 	if(!D) return;
 
 	r1.y -= r0.y;
@@ -224,32 +187,14 @@ void fb_draw_quad(Fbuf fb, Quad S, Pixel p) {
 	fb_draw_triangle(fb, p, S.r0, S.r3, S.r2);
 }
 
-void fb_draw_array_strip(Fbuf fb, Pixel p, size_t n, Vec2 *pts) {
+void fb_draw_polygon_strip(Fbuf fb, Pixel p, size_t n, Vec2 *pts) {
 	for(size_t i = 0; i < n-2; ++i)
 		fb_draw_triangle(fb, p, pts[i], pts[i+1], pts[i+2]);
 }
 
-void fb_draw_array_fan(Fbuf fb, Pixel p, size_t n, Vec2 *pts) {
+void fb_draw_polygon_fan(Fbuf fb, Pixel p, size_t n, Vec2 *pts) {
 	for(size_t i = 0; i < n-2; ++i)
 		fb_draw_triangle(fb, p, pts[0], pts[i+1], pts[i+2]);
-}
-
-void fb_draw_triangle_lerped(Fbuf fb, Triangle S, Vec3Pixel P) {
-	i32 D1 = - vec2det(S.r0, S.r2);
-	i32 D2 = - vec2det(S.r1, S.r0);
-	i32 D = vec2det(S.r1, S.r2) + D1 + D2;
-	if(!D) return;
-
-	S.r1.y -= S.r0.y;
-	S.r2.y -= S.r0.y;
-	S.r1.x += fb.sz.x*S.r1.y - S.r0.x;
-	S.r2.x += fb.sz.x*S.r2.y - S.r0.x;
-
-	UVec2 r;
-	for(r.y = 0; r.y < fb.sz.y; ++r.y, D1 -= S.r2.x, D2 += S.r1.x)
-		for(r.x = 0; r.x < fb.sz.x; ++r.x, D1 += S.r2.y, D2 -= S.r1.y)
-			if(checkptstatus(D, D1, D2))
-				fb_set_pix(fb, r, lerp(getlerpweights(D, D1, D2), P));
 }
 
 static
@@ -460,20 +405,16 @@ void draw(Fbuf fb) {
 	};
 	Pixel SmileClr = 0xFF0000;
 
-	fb_draw_array_fan(fb, SmileClr, sizeof(Smilepts)/sizeof(Vec2), Smilepts);
+	fb_draw_polygon_fan(fb, SmileClr, sizeof(Smilepts)/sizeof(Vec2), Smilepts);
 
 	Triangle Nose = {
 		{fb.sz.x/2, fb.sz.y/3},
 		{13*fb.sz.x/32, 7*fb.sz.y/16},
 		{19*fb.sz.x/32, 7*fb.sz.y/16},
 	};
-	Vec3Pixel NoseColors = {
-		0xFFFF00,
-		0xFF7F3F,
-		0x7FFF3F,
-	};
 
-	fb_draw_triangle_lerped(fb, Nose, NoseColors);
+	Pixel NoseColor = 0xFFFF00;
+	fb_draw_triangle(fb, NoseColor, Nose.r0, Nose.r1, Nose.r2);
 
 	Rect outofboundrect = {
 		{ -200, -300 },

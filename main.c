@@ -2,7 +2,6 @@
 #include <stddef.h>
 #include <stdio.h>
 #include <stdlib.h>
-#include <stdbool.h>
 
 #include <time.h>
 
@@ -129,10 +128,11 @@ void fb_draw_circle(Fbuf fb, Pixel p, u32 R, Vec2 r0) {
 				fb_set_pix(fb, r, p);
 }
 
+// 0 is success
 static
-bool checkptstatus(i64 D, i64 D1, i64 D2) {
+int checkptstatus(i64 D, i64 D1, i64 D2) {
 	if(D < 0) D = -D, D1 = -D1, D2 = -D2;
-	return !(D1 < 0 || D2 < 0 || (u64)D1 + (u64)D2 > (u64)D);
+	return (D1 < 0 || D2 < 0 || (u64)D1 + (u64)D2 > (u64)D);
 }
 
 static
@@ -150,7 +150,7 @@ void fb_draw_triangle(Fbuf fb, Pixel p, Vec2 r0, Vec2 r1, Vec2 r2) {
 	UVec2 r;
 	for(r.y = 0; r.y < fb.sz.y; ++r.y, D1 -= r2.x, D2 += r1.x)
 		for(r.x = 0; r.x < fb.sz.x; ++r.x, D1 += r2.y, D2 -= r1.y)
-			if(checkptstatus(D, D1, D2))
+			if(!checkptstatus(D, D1, D2))
 				fb_set_pix(fb, r, p);
 }
 
@@ -186,7 +186,7 @@ void fb_to_ppm(FILE *f, Fbuf fb) {
 }
 
 void render_to_ppm(Fbuf fb) {
-	const char* fname = "gaem.ppm";
+	const char* fname = "img.ppm";
 	FILE* f = fopen(fname, "wb");
 
 	fprintf(f, "P6\n%d %d 255\n", fb.sz.x, fb.sz.y);
@@ -221,7 +221,7 @@ typedef enum possible_errors_x_e {
 	ERR_CR_IMG,
 	ERR_IMG_INIT,
 	ERR_IMG_FMT,
-} WIN_ERROR_X;
+} WinError_X;
 
 int handle_errors_x(Display *disp, XErrorEvent *err) {
 	(void)disp;
@@ -280,7 +280,7 @@ void render_to_x_win_img(
 	}
 }
 
-int render_to_x_win(
+WinError_X render_to_x_win(
 	Fbuf fb, Display *disp, Window win,
 	long evmask, XImage *img
 ) {
@@ -294,13 +294,10 @@ int render_to_x_win(
 
 	render_to_x_win_img(fb, disp, win, img, evmask);
 
-	free(img->data);
-	img->data = NULL; // don't touch my data Xlib you disgusting creature, you did not allocate it
-
 	return ERR_SUCCESS;
 }
 
-int render_to_x_disp(Fbuf fb, Display *disp) {
+WinError_X render_to_x_disp(Fbuf fb, Display *disp) {
 	XVisualInfo vinfo = {0};
 	XWindowAttributes attrs;
 
@@ -331,11 +328,14 @@ int render_to_x_disp(Fbuf fb, Display *disp) {
 		attrs.your_event_mask, img
 	);
 
+	free(img->data);
+	img->data = NULL; // don't touch my data Xlib you disgusting creature, you did not allocate it
+
 	XDestroyImage(img);
 	return ret;
 }
 
-int render_to_x(Fbuf fb) {
+WinError_X render_to_x(Fbuf fb) {
 	XSetErrorHandler(handle_errors_x);
 	Display *disp = XOpenDisplay(NULL);
 	if(!disp) return ERR_OPEN_DISPLAY;

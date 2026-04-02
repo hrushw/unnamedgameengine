@@ -1,7 +1,6 @@
 #include <stdint.h>
 #include <stddef.h>
 #include <stdio.h>
-#include <stdlib.h>
 
 #include <time.h>
 
@@ -201,25 +200,6 @@ void render_to_ppm(Fbuf fb) {
 	fb_to_ppm(f, fb);
 }
 
-static
-void ximgsetpix_bgra(XImage *img, size_t i, Pixel p) {
-	img->data[i  ] = pixB(p);
-	img->data[i+1] = pixG(p);
-	img->data[i+2] = pixR(p);
-	img->data[i+3] = pixA(p);
-}
-
-void fbtoximg(Fbuf fb, XImage *img) {
-	UVec2 r;
-	for(r.y = 0; r.y < fb.sz.y; ++r.y)
-		for(r.x = 0; r.x < fb.sz.x; ++r.x)
-			ximgsetpix_bgra(
-				img,
-				4*(r.y*img->width + r.x),
-				fb_get_pix(fb, r)
-			);
-}
-
 /* X11 setup */
 typedef enum window_init_stage_x_e {
 	STAGE_NONE = 0,
@@ -251,7 +231,6 @@ typedef struct window_properties_x_t {
 void window_cleanup_x(WinProps_X *wp) {
 	switch(wp->stage) {
 	case STAGE_IMG:
-		free(wp->img->data);
 		wp->img->data = NULL; // don't touch my data Xlib you disgusting creature, you did not allocate it
 		XDestroyImage(wp->img);
 	case STAGE_DISPLAY:
@@ -268,7 +247,7 @@ int handle_errors_x(Display *disp, XErrorEvent *err) {
 	return 0;
 }
 
-WinProps_X window_init_x(unsigned int width, unsigned int height) {
+WinProps_X window_init_x(Fbuf fb) {
 	WinProps_X wp = { .stage = STAGE_NONE };
 	XSetErrorHandler(handle_errors_x);
 	wp.disp = XOpenDisplay(NULL);
@@ -281,7 +260,7 @@ WinProps_X window_init_x(unsigned int width, unsigned int height) {
 
 	wp.win = XCreateSimpleWindow(
 		wp.disp, DefaultRootWindow(wp.disp),
-		0, 0, width, height, 0, 0,
+		0, 0, fb.sz.x, fb.sz.y, 0, 0,
 		BlackPixel(wp.disp, DefaultScreen(wp.disp))
 	);
 	XSelectInput(wp.disp, wp.win, StructureNotifyMask | ExposureMask | KeyPressMask | KeyReleaseMask);
@@ -291,10 +270,10 @@ WinProps_X window_init_x(unsigned int width, unsigned int height) {
 	if(!XMapWindow(wp.disp, wp.win))
 		return wp.status = ERR_MAP_WIN, wp;
 
+	// TODO speedup via XShm
 	wp.img = XCreateImage(
 		wp.disp, wp.attrs.visual, wp.attrs.depth, ZPixmap, 0,
-		calloc(width*height, 4),
-		width, height, 32, 0
+		(char*)fb.buf, fb.sz.x, fb.sz.y, 32, 0
 	);
 	if(!wp.img) return wp.status = ERR_CR_IMG, wp;
 	wp.stage = STAGE_IMG;
@@ -405,7 +384,6 @@ void draw(Fbuf fb, WinProps_X *wp) {
 		fb_draw_circle(fb, EyeballColor, EyeballRadius, EyeballLeftOrigin);
 		fb_draw_circle(fb, EyeballColor, EyeballRadius, EyeballRightOrigin);
 
-		fbtoximg(fb, wp->img);
 		XPutImage(wp->disp, wp->win, DefaultGC(wp->disp, DefaultScreen(wp->disp)), wp->img, 0, 0, 0, 0, fb.sz.x, fb.sz.y);
 
 		nanosleep(&dt, NULL);
@@ -434,7 +412,7 @@ int main() {
 
 	Fbuf fb = { { WIDTH, HEIGHT }, fbufdata };
 
-	WinProps_X wp = window_init_x(fb.sz.x, fb.sz.y);
+	WinProps_X wp = window_init_x(fb);
 	if(wp.status == ERR_SUCCESS)
 		draw(fb, &wp);
 

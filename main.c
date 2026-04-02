@@ -25,7 +25,6 @@ typedef uint32_t Angle;
 typedef struct vec2_t {
 	int32_t x, y;
 } Vec2;
-typedef Vec2 i32Complex;
 typedef Vec2 Triangle[3];
 typedef Vec2 Quad[4];
 
@@ -43,22 +42,26 @@ typedef struct rect_t {
 	UVec2 sz;
 } Rect;
 
-i32Complex i32complex_mul_norm(i32Complex z1, i32Complex z2) {
-	return (i32Complex) {
-		((i64)z1.x * (i64)z2.x - (i64)z1.y * (i64)z2.y) >> 30,
-		((i64)z1.x * (i64)z2.y + (i64)z1.y * (i64)z2.x) >> 30,
-	};
-}
-
 /* Pixel ARGB access functions */
 static inline
-u8 pixA(Pixel p) { return (p >> 24) & 0xFF; }
+u8 pixA(Pixel p) {
+	return (p >> 24) & 0xFF;
+}
+
 static inline
-u8 pixR(Pixel p) { return (p >> 16) & 0xFF; }
+u8 pixR(Pixel p) {
+	return (p >> 16) & 0xFF;
+}
+
 static inline
-u8 pixG(Pixel p) { return (p >> 8) & 0xFF; }
+u8 pixG(Pixel p) {
+	return (p >> 8) & 0xFF;
+}
+
 static inline
-u8 pixB(Pixel p) { return p & 0xFF; }
+u8 pixB(Pixel p) {
+	return p & 0xFF;
+}
 
 /* Framebuffer pixel access functions */
 static inline
@@ -217,6 +220,7 @@ void fbtoximg(Fbuf fb, XImage *img) {
 			);
 }
 
+/* X11 setup */
 typedef enum window_init_stage_x_e {
 	STAGE_NONE = 0,
 	STAGE_DISPLAY,
@@ -304,24 +308,6 @@ WinProps_X window_init_x(unsigned int width, unsigned int height) {
 	) return wp.status = ERR_IMG_FMT, wp;
 
 	return wp;
-}
-
-/* X11 handling functions */
-void handle_events_x(WinProps_X *wp) {
-	XEvent ev;
-
-	while(XCheckWindowEvent(wp->disp, wp->win, wp->attrs.your_event_mask, &ev))
-	switch(ev.type) {
-		case DestroyNotify:
-			wp->closed = 1;
-			return;
-		case Expose: break;
-		case KeyPress:
-			printf("Key press detected!\n"); break;
-		case KeyRelease:
-			printf("Key release detected!\n"); break;
-		default: break;
-	}
 }
 
 /* Main drawing function */
@@ -423,7 +409,20 @@ void draw(Fbuf fb, WinProps_X *wp) {
 		XPutImage(wp->disp, wp->win, DefaultGC(wp->disp, DefaultScreen(wp->disp)), wp->img, 0, 0, 0, 0, fb.sz.x, fb.sz.y);
 
 		nanosleep(&dt, NULL);
-		handle_events_x(wp);
+
+		XEvent ev;
+		while(XCheckWindowEvent(wp->disp, wp->win, wp->attrs.your_event_mask, &ev))
+			switch(ev.type) {
+				case DestroyNotify:
+					wp->closed = 1;
+					return;
+				case Expose: break;
+				case KeyPress:
+					printf("Key press detected!\n"); break;
+				case KeyRelease:
+					printf("Key release detected!\n"); break;
+				default: break;
+			}
 	}
 }
 
@@ -432,11 +431,6 @@ int main() {
 	enum win_height_e { HEIGHT = 480 };
 
 	static Pixel fbufdata[HEIGHT*WIDTH] = {0};
-
-	i32Complex I = { 0, 1 << 30 };
-	i32Complex z0 = { 300, 400 };
-	i32Complex z1 = i32complex_mul_norm(z0, I);
-	printf("%d %d\n", z1.x, z1.y);
 
 	Fbuf fb = { { WIDTH, HEIGHT }, fbufdata };
 

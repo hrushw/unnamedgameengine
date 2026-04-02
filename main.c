@@ -217,6 +217,12 @@ void fbtoximg(Fbuf fb, XImage *img) {
 			);
 }
 
+typedef enum window_init_stage_x_e {
+	STAGE_NONE = 0,
+	STAGE_DISPLAY,
+	STAGE_IMG
+} InitStage_X;
+
 typedef enum possible_errors_x_e {
 	ERR_SUCCESS = 0,
 	ERR_OPEN_DISPLAY,
@@ -228,15 +234,10 @@ typedef enum possible_errors_x_e {
 	ERR_IMG_FMT,
 } WinError_X;
 
-typedef enum window_init_stage_x_e {
-	STAGE_NONE = 0,
-	STAGE_DISPLAY,
-	STAGE_IMG
-} InitStage_X;
-
 typedef struct window_properties_x_t {
 	InitStage_X stage;
 	WinError_X status;
+	int closed;
 	Display *disp;
 	Window win;
 	XWindowAttributes attrs;
@@ -250,7 +251,7 @@ void window_cleanup_x(WinProps_X wp) {
 		wp.img->data = NULL; // don't touch my data Xlib you disgusting creature, you did not allocate it
 		XDestroyImage(wp.img);
 	case STAGE_DISPLAY:
-			XCloseDisplay(wp.disp);
+		XCloseDisplay(wp.disp);
 	case STAGE_NONE:
 	default: break;
 	}
@@ -263,7 +264,7 @@ int handle_errors_x(Display *disp, XErrorEvent *err) {
 	return 0;
 }
 
-WinProps_X window_init_x(Fbuf fb) {
+WinProps_X window_init_x(unsigned int width, unsigned int height) {
 	WinProps_X wp = { .stage = STAGE_NONE };
 	XSetErrorHandler(handle_errors_x);
 	wp.disp = XOpenDisplay(NULL);
@@ -276,7 +277,7 @@ WinProps_X window_init_x(Fbuf fb) {
 
 	wp.win = XCreateSimpleWindow(
 		wp.disp, DefaultRootWindow(wp.disp),
-		0, 0, fb.sz.x, fb.sz.y, 0, 0,
+		0, 0, width, height, 0, 0,
 		BlackPixel(wp.disp, DefaultScreen(wp.disp))
 	);
 	XSelectInput(wp.disp, wp.win, StructureNotifyMask | ExposureMask | KeyPressMask | KeyReleaseMask);
@@ -288,8 +289,8 @@ WinProps_X window_init_x(Fbuf fb) {
 
 	wp.img = XCreateImage(
 		wp.disp, wp.attrs.visual, wp.attrs.depth, ZPixmap, 0,
-		calloc(fb.sz.y*fb.sz.x, 4),
-		fb.sz.x, fb.sz.y, 32, 0
+		calloc(width*height, 4),
+		width, height, 32, 0
 	);
 	if(!wp.img) return wp.status = ERR_CR_IMG, wp;
 	wp.stage = STAGE_IMG;
@@ -306,12 +307,14 @@ WinProps_X window_init_x(Fbuf fb) {
 }
 
 /* X11 handling functions */
-int handle_events_x(Display *disp, Window win, long evmask) {
+void handle_events_x(WinProps_X *wp) {
 	XEvent ev;
 
-	while(XCheckWindowEvent(disp, win, evmask, &ev))
+	while(XCheckWindowEvent(wp->disp, wp->win, wp->attrs.your_event_mask, &ev))
 	switch(ev.type) {
-		case DestroyNotify: return -1;
+		case DestroyNotify:
+			wp->closed = 1;
+			return;
 		case Expose: break;
 		case KeyPress:
 			printf("Key press detected!\n"); break;
@@ -319,21 +322,17 @@ int handle_events_x(Display *disp, Window win, long evmask) {
 			printf("Key release detected!\n"); break;
 		default: break;
 	}
-
-	return 0;
 }
 
-void render_to_x_win_img(
-	Fbuf fb, Display *disp, Window win,
-	XImage *img, long evmask
-) {
+void render_to_x_win_img(Fbuf fb, WinProps_X *wp) {
 	struct timespec dt = { 0, 16666667 };
 	Vec2 EyeballLeftOrigin = {fb.sz.x/16, 5*fb.sz.y/16};
 	u32 EyeballRadius = fb.sz.x/32;
 	Vec2 EyeballRightOrigin = EyeballLeftOrigin;
 	EyeballRightOrigin.x = fb.sz.x - EyeballLeftOrigin.x;
 	int dir = 1;
-	while(!handle_events_x(disp, win, evmask)) {
+
+	while(!wp->closed) {
 		// Eye motion logic
 		fb_draw_circle(fb, 0x00FF00, EyeballRadius, EyeballLeftOrigin);
 		fb_draw_circle(fb, 0x00CF3F, EyeballRadius, EyeballRightOrigin);
@@ -348,18 +347,18 @@ void render_to_x_win_img(
 		fb_draw_circle(fb, 0x00007F, EyeballRadius, EyeballLeftOrigin);
 		fb_draw_circle(fb, 0x00007F, EyeballRadius, EyeballRightOrigin);
 
-		fbtoximg(fb, img);
-		XPutImage(disp, win, DefaultGC(disp, DefaultScreen(disp)), img, 0, 0, 0, 0, fb.sz.x, fb.sz.y);
+		fbtoximg(fb, wp->img);
+		XPutImage(wp->disp, wp->win, DefaultGC(wp->disp, DefaultScreen(wp->disp)), wp->img, 0, 0, 0, 0, fb.sz.x, fb.sz.y);
 
 		nanosleep(&dt, NULL);
+		handle_events_x(wp);
 	}
 }
 
 WinError_X render_to_x(Fbuf fb) {
-	WinProps_X wp = window_init_x(fb);
-	if(wp.status != ERR_SUCCESS) return wp.status;
-
-	render_to_x_win_img(fb, wp.disp, wp.win, wp.img, wp.attrs.your_event_mask);
+	WinProps_X wp = window_init_x(fb.sz.x, fb.sz.y);
+	if(wp.status == ERR_SUCCESS)
+		render_to_x_win_img(fb, &wp);
 
 	window_cleanup_x(wp);
 	return wp.status;

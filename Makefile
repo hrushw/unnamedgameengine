@@ -1,5 +1,8 @@
 CC=gcc
-CFLAGS=-Wall -Wextra -Wvla -Wpedantic -Winline
+# warn about failure to inline functions
+# warn when using variable-length arrays
+# enforce 2s complement signed arithmetic
+CFLAGS=-Wall -Wextra -Wpedantic -Wvla -Winline -fwrapv
 LFLAGS=-lX11 -lXext
 
 win: main.c

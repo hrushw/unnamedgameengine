@@ -235,9 +235,9 @@ typedef enum possible_errors_x_e {
 } WinError_X;
 
 typedef struct window_properties_x_t {
+	int closed;
 	InitStage_X stage;
 	WinError_X status;
-	int closed;
 	Display *disp;
 	Window win;
 	XWindowAttributes attrs;
@@ -416,8 +416,8 @@ void draw(Fbuf fb) {
 
 	Triangle BrowLeft = {
 		{ 5*fb.sz.x/32, (i32)fb.sz.y/12 },
-		{ fb.sz.x/32, -1*(i32)fb.sz.y/24 },
-		{ 9*fb.sz.x/32, -1*(i32)fb.sz.y/24 },
+		{ fb.sz.x/32, - ((i32)fb.sz.y/24) },
+		{ 9*fb.sz.x/32, - ((i32)fb.sz.y/24) },
 	}, BrowRight = {
 		{ fb.sz.x - BrowLeft[0].x, BrowLeft[0].y },
 		{ fb.sz.x - BrowLeft[1].x, BrowLeft[1].y },

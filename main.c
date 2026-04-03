@@ -211,10 +211,9 @@ typedef enum possible_errors_x_e {
 	ERR_OPEN_DISPLAY,
 	ERR_GET_VISUAL,
 	ERR_GETWINATTRS,
+	ERR_VISUAL_FMT,
 	ERR_MAP_WIN,
-	ERR_CR_IMG,
 	ERR_IMG_INIT,
-	ERR_IMG_FMT,
 } WinError_X;
 
 typedef struct window_properties_x_t {
@@ -268,11 +267,10 @@ WinProps_X window_init_x(Fbuf fb) {
 
 	if(!XGetWindowAttributes(wp.disp, wp.win, &wp.attrs))
 		return wp.status = ERR_GETWINATTRS, wp;
-	if(
-		   wp.attrs.visual->red_mask != 0xFF0000
+	if(wp.attrs.visual->red_mask != 0xFF0000
 		|| wp.attrs.visual->green_mask != 0xFF00
 		|| wp.attrs.visual->blue_mask != 0xFF
-	) return wp.status = ERR_IMG_FMT, wp;
+	) return wp.status = ERR_VISUAL_FMT, wp;
 
 	if(!XMapWindow(wp.disp, wp.win))
 		return wp.status = ERR_MAP_WIN, wp;
@@ -301,7 +299,7 @@ WinProps_X window_init_x(Fbuf fb) {
 	if(!XInitImage(&wp.img))
 		return wp.status = ERR_IMG_INIT, wp;
 
-	return wp;
+	return wp.status = ERR_SUCCESS, wp;
 }
 
 /* Main drawing function */

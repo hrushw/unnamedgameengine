@@ -179,7 +179,7 @@ void fb_draw_polygon_fan(Fbuf fb, Pixel p, size_t n, Vec2 *pts) {
 		fb_draw_triangle(fb, p, pts[0], pts[i+1], pts[i+2]);
 }
 
-/* framebuffer export functions (to X11 window or PPM file) */
+/* framebuffer export to ppm */
 void fb_to_ppm(FILE *f, Fbuf fb) {
 	Pixel p;
 	u8 pixbuf[3];
@@ -204,7 +204,6 @@ void render_to_ppm(Fbuf fb) {
 typedef enum window_init_stage_x_e {
 	STAGE_NONE = 0,
 	STAGE_DISPLAY,
-	STAGE_IMG
 } InitStage_X;
 
 typedef enum possible_errors_x_e {
@@ -225,16 +224,14 @@ typedef struct window_properties_x_t {
 	Display *disp;
 	Window win;
 	XWindowAttributes attrs;
-	XImage *img;
+	XImage img;
 } WinProps_X;
 
 void window_cleanup_x(WinProps_X *wp) {
 	switch(wp->stage) {
-	case STAGE_IMG:
-		wp->img->data = NULL; // don't touch my data Xlib you disgusting creature, you did not allocate it
-		XDestroyImage(wp->img);
 	case STAGE_DISPLAY:
 		XCloseDisplay(wp->disp);
+		/* fallthrough */
 	case STAGE_NONE:
 	default: break;
 	}
@@ -258,33 +255,51 @@ WinProps_X window_init_x(Fbuf fb) {
 	if(!XMatchVisualInfo(wp.disp, DefaultScreen(wp.disp), 24, TrueColor, &vinfo))
 		return wp.status = ERR_GET_VISUAL, wp;
 
-	wp.win = XCreateSimpleWindow(
+	XSetWindowAttributes xswattrs = {
+		.background_pixel = BlackPixel(wp.disp, DefaultScreen(wp.disp)),
+		.event_mask = StructureNotifyMask | ExposureMask | KeyPressMask | KeyReleaseMask
+	};
+	wp.win = XCreateWindow(
 		wp.disp, DefaultRootWindow(wp.disp),
-		0, 0, fb.sz.x, fb.sz.y, 0, 0,
-		BlackPixel(wp.disp, DefaultScreen(wp.disp))
+		0, 0, fb.sz.x, fb.sz.y, 0,
+		24, InputOutput, vinfo.visual,
+		CWBackPixel | CWEventMask, &xswattrs
 	);
-	XSelectInput(wp.disp, wp.win, StructureNotifyMask | ExposureMask | KeyPressMask | KeyReleaseMask);
 
 	if(!XGetWindowAttributes(wp.disp, wp.win, &wp.attrs))
 		return wp.status = ERR_GETWINATTRS, wp;
+	if(
+		   wp.attrs.visual->red_mask != 0xFF0000
+		|| wp.attrs.visual->green_mask != 0xFF00
+		|| wp.attrs.visual->blue_mask != 0xFF
+	) return wp.status = ERR_IMG_FMT, wp;
+
 	if(!XMapWindow(wp.disp, wp.win))
 		return wp.status = ERR_MAP_WIN, wp;
 
-	// TODO speedup via XShm
-	wp.img = XCreateImage(
-		wp.disp, wp.attrs.visual, wp.attrs.depth, ZPixmap, 0,
-		(char*)fb.buf, fb.sz.x, fb.sz.y, 32, 0
-	);
-	if(!wp.img) return wp.status = ERR_CR_IMG, wp;
-	wp.stage = STAGE_IMG;
+	wp.img = (XImage) {
+		.width = (int)fb.sz.x,
+		.height = (int)fb.sz.y,
+		.xoffset = 0,
+		.format = ZPixmap,
+		.data = (char*)fb.buf,
 
-	if(!XInitImage(wp.img))
+		.byte_order = LSBFirst,
+		.bitmap_unit = 32,
+		.bitmap_bit_order = LSBFirst,
+		.bitmap_pad = 32,
+
+		.depth = wp.attrs.depth,
+		.bytes_per_line = 0,
+		.bits_per_pixel = 32,
+
+		.red_mask = wp.attrs.visual->red_mask,
+		.blue_mask = wp.attrs.visual->blue_mask,
+		.green_mask = wp.attrs.visual->green_mask,
+	};
+
+	if(!XInitImage(&wp.img))
 		return wp.status = ERR_IMG_INIT, wp;
-	if(wp.img->bits_per_pixel != 32
-		|| wp.img->red_mask != 0xFF0000
-		|| wp.img->blue_mask != 0xFF
-		|| wp.img->green_mask != 0xFF00
-	) return wp.status = ERR_IMG_FMT, wp;
 
 	return wp;
 }
@@ -384,7 +399,7 @@ void draw(Fbuf fb, WinProps_X *wp) {
 		fb_draw_circle(fb, EyeballColor, EyeballRadius, EyeballLeftOrigin);
 		fb_draw_circle(fb, EyeballColor, EyeballRadius, EyeballRightOrigin);
 
-		XPutImage(wp->disp, wp->win, DefaultGC(wp->disp, DefaultScreen(wp->disp)), wp->img, 0, 0, 0, 0, fb.sz.x, fb.sz.y);
+		XPutImage(wp->disp, wp->win, DefaultGC(wp->disp, DefaultScreen(wp->disp)), &wp->img, 0, 0, 0, 0, fb.sz.x, fb.sz.y);
 
 		nanosleep(&dt, NULL);
 

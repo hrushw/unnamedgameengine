@@ -180,6 +180,7 @@ void fb_draw_polygon_fan(Fbuf fb, Pixel p, size_t n, Vec2 *pts) {
 }
 
 /* framebuffer export to ppm */
+static
 void fb_to_ppm(FILE *f, Fbuf fb) {
 	Pixel p;
 	u8 pixbuf[3];
@@ -192,6 +193,7 @@ void fb_to_ppm(FILE *f, Fbuf fb) {
 	}
 }
 
+static
 void render_to_ppm(Fbuf fb) {
 	const char* fname = "img.ppm";
 	FILE* f = fopen(fname, "wb");
@@ -226,6 +228,7 @@ typedef struct window_properties_x_t {
 	XImage img;
 } WinProps_X;
 
+static
 void window_cleanup_x(WinProps_X *wp) {
 	switch(wp->stage) {
 	case STAGE_DISPLAY:
@@ -236,6 +239,7 @@ void window_cleanup_x(WinProps_X *wp) {
 	}
 }
 
+static
 int handle_errors_x(Display *disp, XErrorEvent *err) {
 	(void)disp;
 	(void)err;
@@ -243,6 +247,7 @@ int handle_errors_x(Display *disp, XErrorEvent *err) {
 	return 0;
 }
 
+static
 WinProps_X window_init_x(Fbuf fb) {
 	WinProps_X wp = { .stage = STAGE_NONE };
 	XSetErrorHandler(handle_errors_x);
@@ -303,6 +308,7 @@ WinProps_X window_init_x(Fbuf fb) {
 }
 
 /* Main drawing function */
+static
 void draw(Fbuf fb, WinProps_X *wp) {
 	Rect EyeLeft = {
 		{ fb.sz.x/32, 10*fb.sz.y/48 },

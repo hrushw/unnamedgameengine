@@ -1,12 +1,14 @@
 CC=gcc
 # warn about failure to inline functions
 # warn when using variable-length arrays
+# warn about all cases of overflow
 # enforce 2s complement signed arithmetic
-CFLAGS=-Wall -Wextra -Wpedantic -Wvla -Winline -fwrapv
+WFLAGS=-Wall -Wextra -Wpedantic -Wvla -Winline -Wstrict-overflow=5 -Wshift-overflow=2
+CFLAGS=-fwrapv
 LFLAGS=-lX11 -lXext
 
 win: main.c
-	$(CC) $(CFLAGS) $(LFLAGS) -o win main.c
+	$(CC) $(CFLAGS) $(WFLAGS) $(LFLAGS) -o win main.c
 
 clean:
 	rm -f win *.o *.ppm *.png

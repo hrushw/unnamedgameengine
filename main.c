@@ -17,8 +17,6 @@ typedef uint64_t u64;
 typedef int32_t i32;
 typedef int64_t i64;
 
-typedef struct timespec Timespec;
-
 typedef uint32_t Pixel;
 typedef uint32_t Angle;
 
@@ -326,23 +324,53 @@ WinProps_X window_init_x(Fbuf fb) {
 	return wp.status = ERR_SUCCESS, wp;
 }
 
+typedef struct timespec Timespec;
+
+static
 Timespec get_timespec_cur(clockid_t clk) {
 	Timespec ts;
 	clock_gettime(clk, &ts);
 	return ts;
 }
 
+static
 Timespec get_timespec_diff(Timespec t1, Timespec t0) {
-	if(t1.tv_sec < t0.tv_sec)
-		return (Timespec) {0, 0};
-	t1.tv_sec -= t0.tv_sec;
-
-	if(t1.tv_nsec < t0.tv_nsec)
-		return t1.tv_sec
-			? (Timespec) {t1.tv_sec - 1, t1.tv_nsec + 1000000000 - t0.tv_nsec}
+	return (t1.tv_nsec < t0.tv_nsec)
+		? (t1.tv_sec > t0.tv_sec)
+			? (Timespec) {t1.tv_sec - t0.tv_sec - 1, t1.tv_nsec + 1000000000 - t0.tv_nsec}
+			: (Timespec) {0, 0}
+		: (t1.tv_sec >= t0.tv_sec)
+			? (Timespec) {t1.tv_sec - t0.tv_sec, t1.tv_nsec - t0.tv_nsec}
 			: (Timespec) {0, 0};
+}
 
-	return t1.tv_nsec -= t0.tv_nsec, t1;
+typedef struct drawclock_t {
+	Timespec start, cur, rel, diff, interval;
+} DrawClock;
+
+static
+DrawClock drawclock_init(Timespec dt) {
+	Timespec t = get_timespec_cur(CLOCK_MONOTONIC);
+	return (DrawClock) {
+		.start = t,
+		.cur = t,
+		.rel = {0, 0},
+		.diff = {0, 0},
+		.interval = dt,
+	};
+}
+
+static
+void drawclock_wait(DrawClock *clk) {
+	clk->diff = get_timespec_diff(get_timespec_cur(CLOCK_MONOTONIC), clk->cur);
+	clk->diff = get_timespec_diff(clk->interval, clk->diff);
+	nanosleep(&clk->diff, NULL);
+
+	clk->cur = get_timespec_cur(CLOCK_MONOTONIC);
+	clk->rel = get_timespec_diff(clk->cur, clk->start);
+
+	printf("%ld.%09ld : 0.%09ld s\r", clk->rel.tv_sec, clk->rel.tv_nsec, clk->diff.tv_nsec);
+	fflush(stdout);
 }
 
 void handle_events_x(WinProps_X *wp) {
@@ -433,8 +461,6 @@ void draw(Fbuf fb, WinProps_X *wp) {
 	fb_draw_triangle_arr(fb, BrowColor, BrowLeft);
 	fb_draw_triangle_arr(fb, BrowColor, BrowRight);
 
-	enum { FRAME_NS = 16666667 };
-
 	Vec2 EyeballLeftOrigin = {fb.sz.x/16, 5*fb.sz.y/16};
 	u32 EyeballRadius = fb.sz.x/32;
 	Vec2 EyeballRightOrigin = EyeballLeftOrigin;
@@ -442,12 +468,10 @@ void draw(Fbuf fb, WinProps_X *wp) {
 	EyeballRightOrigin.x = fb.sz.x - EyeballLeftOrigin.x;
 	int dir = 1;
 
-	Timespec ts_dtmax = {0, FRAME_NS},
-		ts_begin = get_timespec_cur(CLOCK_MONOTONIC),
-		ts_cur = ts_begin,
-		ts_rel, ts_dt;
+	DrawClock clk = drawclock_init((struct timespec) {0, 16666667});
 	while(!wp->closed) {
 		// Eye motion logic
+		// TODO use timespec
 		fb_draw_circle(fb, EyeLeftClr, EyeballRadius, EyeballLeftOrigin);
 		fb_draw_circle(fb, EyeRightClr, EyeballRadius, EyeballRightOrigin);
 		if(dir) EyeballLeftOrigin.x += 2; else EyeballLeftOrigin.x -= 2;
@@ -463,15 +487,7 @@ void draw(Fbuf fb, WinProps_X *wp) {
 
 		XPutImage(wp->disp, wp->win, DefaultGC(wp->disp, DefaultScreen(wp->disp)), &wp->img, 0, 0, 0, 0, fb.sz.x, fb.sz.y);
 
-		ts_dt = get_timespec_diff(get_timespec_cur(CLOCK_MONOTONIC), ts_cur);
-		ts_dt = get_timespec_diff(ts_dtmax, ts_dt);
-		nanosleep(&ts_dt, NULL);
-		ts_cur = get_timespec_cur(CLOCK_MONOTONIC);
-		ts_rel = get_timespec_diff(ts_cur, ts_begin);
-
-		printf("%ld.%09ld : 0.%09ld s\r", ts_rel.tv_sec, ts_rel.tv_nsec, ts_dt.tv_nsec);
-		fflush(stdout);
-
+		drawclock_wait(&clk);
 		handle_events_x(wp);
 	}
 	printf("\n");

@@ -179,6 +179,12 @@ void fb_draw_quad(Fbuf fb, Pixel p, Quad q) {
 }
 
 static
+void fb_draw_triangles(Fbuf fb, Pixel p, u32 n, Vec2 *pts) {
+	for(u32 i = 0; i < n-2; i += 3)
+		fb_draw_triangle(fb, p, pts[i], pts[i+1], pts[i+2]);
+}
+
+static
 void fb_draw_polygon_strip(Fbuf fb, Pixel p, u32 n, Vec2 *pts) {
 	for(u32 i = 0; i < n-2; ++i)
 		fb_draw_triangle(fb, p, pts[i], pts[i+1], pts[i+2]);
@@ -213,12 +219,6 @@ void render_to_ppm(Fbuf fb) {
 	fb_to_ppm(f, fb);
 }
 
-/* X11 setup */
-typedef enum window_init_stage_x_e {
-	STAGE_NONE = 0,
-	STAGE_DISPLAY,
-} InitStage_X;
-
 typedef enum possible_errors_x_e {
 	ERR_SUCCESS = 0,
 	ERR_OPEN_DISPLAY,
@@ -231,24 +231,12 @@ typedef enum possible_errors_x_e {
 
 typedef struct window_properties_x_t {
 	int closed;
-	InitStage_X stage;
 	WinError_X status;
 	Display *disp;
 	Window win;
 	XWindowAttributes attrs;
 	XImage img;
 } WinProps_X;
-
-static
-void window_cleanup_x(WinProps_X *wp) {
-	switch(wp->stage) {
-	case STAGE_DISPLAY:
-		XCloseDisplay(wp->disp);
-		/* fallthrough */
-	case STAGE_NONE:
-	default: break;
-	}
-}
 
 /* X11 errors are expected and normal
  * the window may be destroyed just before XPutImage is called, resulting in an invalid operation
@@ -264,12 +252,11 @@ int handle_errors_x(Display *disp, XErrorEvent *err) {
 
 static
 WinProps_X window_init_x(Fbuf fb) {
-	WinProps_X wp = { .stage = STAGE_NONE };
+	WinProps_X wp;
 	XSetErrorHandler(handle_errors_x);
 	wp.disp = XOpenDisplay(NULL);
 	if(!wp.disp)
 		return wp.status = ERR_OPEN_DISPLAY, wp;
-	wp.stage = STAGE_DISPLAY;
 
 	XVisualInfo vinfo = {0};
 	if(!XMatchVisualInfo(wp.disp, DefaultScreen(wp.disp), 24, TrueColor, &vinfo))
@@ -337,11 +324,11 @@ static
 Timespec get_timespec_diff(Timespec t1, Timespec t0) {
 	return (t1.tv_nsec < t0.tv_nsec)
 		? (t1.tv_sec > t0.tv_sec)
-			? (Timespec) {t1.tv_sec - t0.tv_sec - 1, t1.tv_nsec + 1000000000 - t0.tv_nsec}
-			: (Timespec) {0, 0}
+			? (Timespec) { t1.tv_sec - t0.tv_sec - 1, t1.tv_nsec + 1000000000 - t0.tv_nsec }
+			: (Timespec) { 0, 0 }
 		: (t1.tv_sec >= t0.tv_sec)
-			? (Timespec) {t1.tv_sec - t0.tv_sec, t1.tv_nsec - t0.tv_nsec}
-			: (Timespec) {0, 0};
+			? (Timespec) { t1.tv_sec - t0.tv_sec, t1.tv_nsec - t0.tv_nsec }
+			: (Timespec) { 0, 0 };
 }
 
 typedef struct drawclock_t {
@@ -360,6 +347,7 @@ DrawClock drawclock_init(Timespec dt) {
 	};
 }
 
+// TODO somehow allow vsync?
 static
 void drawclock_wait(DrawClock *clk) {
 	clk->diff = get_timespec_diff(get_timespec_cur(CLOCK_MONOTONIC), clk->cur);
@@ -386,6 +374,33 @@ void handle_events_x(WinProps_X *wp) {
 				printf("Key release detected!\n"); break;
 			default: break;
 		}
+}
+
+const u64 font_H = 0x4242427E42424242;
+const u64 font_E = 0x7E0202021E02027E;
+const u64 font_L = 0x7E02020202020202;
+const u64 font_O = 0x3C4242424242423C;
+
+const u64 font_W = 0x42667E5A42424242;
+const u64 font_R = 0x4262321E3E42423E;
+const u64 font_D = 0x1E2242424242221E;
+
+const u64 font_excl = 0x1818001818181818;
+const u64 font_blank = 0x0000000000000000;
+
+static
+void fb_draw_u64_bitmap(Fbuf fb, Pixel p, UVec2 r, u64 bmp) {
+	for(u8 y = 0; y < 8; ++y)
+		for(u8 x = 0; x < 8; ++x)
+			if(bmp & ((u64)1 << (y*8 + x)))
+				fb_set_pix(fb, (UVec2) { r.x + x, r.y + y }, p);
+}
+
+static void fb_draw_u64_bitmaps_x(Fbuf fb, Pixel p, UVec2 r, u32 n, u64 *bmps) {
+	if(r.x + n*8 > fb.sz.x) return;
+
+	for(u32 i = 0; i < n; ++i, r.x += 8)
+		fb_draw_u64_bitmap(fb, p, r, bmps[i]);
 }
 
 /* Main drawing function */
@@ -437,7 +452,7 @@ void draw(Fbuf fb, WinProps_X *wp) {
 	};
 
 	Pixel NoseColor = 0xFFFF00;
-	fb_draw_triangle_arr(fb, NoseColor, Nose);
+	fb_draw_polygon_strip(fb, NoseColor, 3, Nose);
 
 	fb_draw_rect(fb, 0xFF00FF, (Vec2) {-200, -300}, (UVec2) {100, 200});
 
@@ -447,19 +462,27 @@ void draw(Fbuf fb, WinProps_X *wp) {
 	};
 	fb_draw_rect(fb, 0xFFFFFF, Goatee.r0, Goatee.sz);
 
-	Triangle BrowLeft = {
+	Vec2 Brows[] = {
 		{ 5*fb.sz.x/32, (i32)fb.sz.y/12 },
 		{ fb.sz.x/32, - ((i32)fb.sz.y/24) },
 		{ 9*fb.sz.x/32, - ((i32)fb.sz.y/24) },
-	}, BrowRight = {
-		{ fb.sz.x - BrowLeft[0].x, BrowLeft[0].y },
-		{ fb.sz.x - BrowLeft[1].x, BrowLeft[1].y },
-		{ fb.sz.x - BrowLeft[2].x, BrowLeft[2].y },
+
+		{ 27*fb.sz.x/32, (i32)fb.sz.y/12 },
+		{ 31*fb.sz.x/32, - (i32)fb.sz.y/24 },
+		{ 23*fb.sz.x/32, - (i32)fb.sz.y/24 },
 	};
 
 	Pixel BrowColor = 0x7F3F00;
-	fb_draw_triangle_arr(fb, BrowColor, BrowLeft);
-	fb_draw_triangle_arr(fb, BrowColor, BrowRight);
+	fb_draw_triangles(fb, BrowColor, 6, Brows);
+
+	UVec2 textr0 = { fb.sz.x/4, fb.sz.x/10};
+	u64 txt[] = {
+		font_H, font_E, font_L, font_L, font_O,
+		font_blank,
+		font_W, font_O, font_R, font_L, font_D,
+		font_excl
+	};
+	fb_draw_u64_bitmaps_x(fb, 0xFF00FF, textr0, sizeof(txt)/sizeof(u64), txt);
 
 	Vec2 EyeballLeftOrigin = {fb.sz.x/16, 5*fb.sz.y/16};
 	u32 EyeballRadius = fb.sz.x/32;
@@ -468,10 +491,10 @@ void draw(Fbuf fb, WinProps_X *wp) {
 	EyeballRightOrigin.x = fb.sz.x - EyeballLeftOrigin.x;
 	int dir = 1;
 
-	DrawClock clk = drawclock_init((struct timespec) {0, 16666667});
+	enum { FRAME_NS = 16666667 };
+	DrawClock clk = drawclock_init((struct timespec) {0, FRAME_NS});
 	while(!wp->closed) {
 		// Eye motion logic
-		// TODO use timespec
 		fb_draw_circle(fb, EyeLeftClr, EyeballRadius, EyeballLeftOrigin);
 		fb_draw_circle(fb, EyeRightClr, EyeballRadius, EyeballRightOrigin);
 		if(dir) EyeballLeftOrigin.x += 2; else EyeballLeftOrigin.x -= 2;
@@ -505,7 +528,7 @@ int main() {
 	if(wp.status == ERR_SUCCESS)
 		draw(fb, &wp);
 
-	window_cleanup_x(&wp);
+	XCloseDisplay(wp.disp);
 	render_to_ppm(fb);
 
 	return wp.status;

@@ -31,6 +31,10 @@ typedef struct uvec2_t {
 	u32 x, y;
 } UVec2;
 
+typedef struct uvec2x2_t {
+	UVec2 r0, r1;
+} UVec2x2;
+
 typedef struct fbuf_t {
 	UVec2 	sz;
 	Pixel *buf;
@@ -76,6 +80,15 @@ Pixel fb_get_pix(Fbuf fb, UVec2 r) {
 // determinant
 static inline
 i64 vec2det(Vec2 v0, Vec2 v1) {
+	return (i64)v0.x*(i64)v1.y - (i64)v1.x*(i64)v0.y;
+}
+
+static inline
+i64 uv2v2det(UVec2 v0, Vec2 v1) {
+	return (i64)v0.x*(i64)v1.y - (i64)v1.x*(i64)v0.y;
+}
+
+i64 v2uv2det(Vec2 v0, UVec2 v1) {
 	return (i64)v0.x*(i64)v1.y - (i64)v1.x*(i64)v0.y;
 }
 
@@ -136,60 +149,58 @@ int checkptstatus(i64 D, i64 D1, i64 D2) {
 }
 
 static
-void fb_draw_triangle_bounded(Fbuf fb, Pixel p, UVec2 B0, UVec2 B1, Vec2 r0, Vec2 r1, Vec2 r2) {
-	i64 D1 = - vec2det(r0, r2);
-	i64 D2 = - vec2det(r1, r0);
-	i64 D = vec2det(r1, r2) + D1 + D2;
-	if(!D) return;
+Vec2 vec2sub(Vec2 r1, Vec2 r0) {
+	return (Vec2) { r1.x - r0.x, r1.y - r0.y };
+}
 
-	D1 += (i64)B0.x*r2.y - (i64)B0.y*r2.x;
-	D2 += r1.x*(i64)B0.y - r1.y*(i64)B0.x;
+static
+Vec2 i32minmax_3_partial(i32 a, i32 b, i32 c) {
+	return b < c
+		? (Vec2) {a, c}
+		: (a < c) ? (Vec2) {a, b} : (Vec2) {c, b};
+}
 
-	D1 -= (i64)B0.x*r0.y - (i64)B0.y*r0.x;
-	D2 += (i64)B0.x*r0.y - (i64)B0.y*r0.x;
+static
+Vec2 i32minmax_3(i32 a, i32 b, i32 c) {
+	return a < b
+		? i32minmax_3_partial(a, b, c)
+		: i32minmax_3_partial(b, a, c);
+}
 
-	r1.y -= r0.y;
-	r2.y -= r0.y;
-	r1.x += (B1.x-B0.x)*r1.y - r0.x;
-	r2.x += (B1.x-B0.x)*r2.y - r0.x;
+static
+UVec2x2 triangle_bound(UVec2 sz, Vec2 r0, Vec2 r1, Vec2 r2) {
+	Vec2 xmm = i32minmax_3(r0.x, r1.x, r2.x);
+	Vec2 ymm = i32minmax_3(r0.y, r1.y, r2.y);
+	return (UVec2x2) {
+		{ i32min0(xmm.x), i32min0(ymm.x) },
+		{ i32minmax0(sz.x, xmm.y+1), i32minmax0(sz.y, ymm.y+1) }
+	};
+}
+
+static
+void fb_draw_triangle_bounded(Fbuf fb, Pixel p, UVec2 B0, UVec2 B1, Vec2 r0, Vec2 dr1, Vec2 dr2) {
+	i64 D = vec2det(dr1, dr2),
+		D1 = uv2v2det(B0, dr2) - vec2det(r0, dr2),
+		D2 = v2uv2det(dr1, B0) - vec2det(dr1, r0);
+	// if(!D) return;
+
+	B1.x -= B0.x;
+	dr1.x += B1.x*dr1.y;
+	dr2.x += B1.x*dr2.y;
+	B1.x += B0.x;
 
 	UVec2 r;
-	for(r.y = B0.y; r.y < B1.y; ++r.y, D1 -= r2.x, D2 += r1.x)
-		for(r.x = B0.x; r.x < B1.x; ++r.x, D1 += r2.y, D2 -= r1.y)
+	for(r.y = B0.y; r.y < B1.y; ++r.y, D1 -= dr2.x, D2 += dr1.x)
+		for(r.x = B0.x; r.x < B1.x; ++r.x, D1 += dr2.y, D2 -= dr1.y)
 			if(!checkptstatus(D, D1, D2))
 				fb_set_pix(fb, r, p);
-}
-
-static
-UVec2 triangle_bound_min(Vec2 r0, Vec2 r1, Vec2 r2) {
-	return (UVec2) {
-		i32min0(r0.x < r1.x
-			? (r0.x < r2.x ? r0.x : (r1.x < r2.x ? r1.x : r2.x))
-			: (r1.x < r2.x ? r1.x : (r0.x < r2.x ? r0.x : r2.x))),
-		i32min0(r0.y < r1.y
-			? (r0.y < r2.y ? r0.y : (r1.y < r2.y ? r1.y : r2.y))
-			: (r1.y < r2.y ? r1.y : (r0.y < r2.y ? r0.y : r2.y))),
-	};
-}
-
-static
-UVec2 triangle_bound_max(UVec2 sz, Vec2 r0, Vec2 r1, Vec2 r2) {
-	return (UVec2) {
-		i32minmax0(sz.x, r0.x > r1.x
-			? (r0.x > r2.x ? r0.x : (r1.x > r2.x ? r1.x : r2.x))
-			: (r1.x > r2.x ? r1.x : (r0.x > r2.x ? r0.x : r2.x))),
-		i32minmax0(sz.y, r0.y > r1.y
-			? (r0.y > r2.y ? r0.y : (r1.y > r2.y ? r1.y : r2.y))
-			: (r1.y > r2.y ? r1.y : (r0.y > r2.y ? r0.y : r2.y))),
-	};
 }
 
 // TODO bounds checking
 static
 void fb_draw_triangle(Fbuf fb, Pixel p, Vec2 r0, Vec2 r1, Vec2 r2) {
-	UVec2 rbegin = triangle_bound_min(r0, r1, r2);
-	UVec2 rend = triangle_bound_max(fb.sz, r0, r1, r2);
-	fb_draw_triangle_bounded(fb, p, rbegin, rend, r0, r1, r2);
+	UVec2x2 bound = triangle_bound(fb.sz, r0, r1, r2);
+	fb_draw_triangle_bounded(fb, p, bound.r0, bound.r1, r0, vec2sub(r1, r0), vec2sub(r2, r0));
 }
 
 static

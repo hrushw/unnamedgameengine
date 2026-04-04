@@ -101,7 +101,7 @@ void fb_clear(Fbuf fb, Pixel p) {
 
 static inline
 u32 i32min0(i32 a) {
-	return a < 0 ? 0 : a;
+	return a > 0 ? a : 0;
 }
 
 static inline
@@ -127,16 +127,11 @@ u32 u32min(u32 a, u32 b) {
 	return a < b ? a : b;
 }
 
-static inline
-i32 u32min0(i32 a) {
-	return a > 0 ? a : 0;
-}
-
 static
 void fb_draw_circle(Fbuf fb, Pixel p, u32 R, Vec2 r0) {
 	UVec2 r;
-	for(r.y = u32min0(r0.y - (i32)R); r.y < u32min(fb.sz.y, (u32)r0.y + R); ++r.y)
-		for(r.x = u32min0(r0.x - (i32)R); r.x < u32min(fb.sz.x, (u32)r0.x + R); ++r.x)
+	for(r.y = i32min0(r0.y - (i32)R); r.y < u32min(fb.sz.y, (u32)r0.y + R); ++r.y)
+		for(r.x = i32min0(r0.x - (i32)R); r.x < u32min(fb.sz.x, (u32)r0.x + R); ++r.x)
 			if(i32square(r.y - r0.y) + i32square(r.x - r0.x) < i32square(R))
 				fb_set_pix(fb, r, p);
 }

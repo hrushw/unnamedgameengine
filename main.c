@@ -68,13 +68,13 @@ u8 pixB(Pixel p) {
 
 /* Framebuffer pixel access functions */
 static inline
-void fb_set_pix(Fbuf fb, UVec2 r, Pixel p) {
-	fb.buf[r.y*fb.sz.x + r.x] = p;
+void fb_set_pix(Fbuf fb, Pixel p, u32 x, u32 y) {
+	fb.buf[y*fb.sz.x + x] = p;
 }
 
 static inline
-Pixel fb_get_pix(Fbuf fb, UVec2 r) {
-	return fb.buf[r.y*fb.sz.x + r.x];
+Pixel fb_get_pix(Fbuf fb, u32 x, u32 y) {
+	return fb.buf[y*fb.sz.x + x];
 }
 
 // determinant
@@ -102,10 +102,9 @@ u32 i32minmax0(i32 a, u32 max) {
 
 static
 void fb_draw_rect(Fbuf fb, Pixel p, Vec2 r0, UVec2 sz) {
-	UVec2 r;
-	for(r.y = i32min0(r0.y); r.y < i32minmax0(r0.y + sz.y, fb.sz.y); ++r.y)
-		for(r.x = i32min0(r0.x); r.x < i32minmax0(r0.x + sz.x, fb.sz.x); ++r.x)
-			fb_set_pix(fb, r, p);
+	for(u32 y = i32min0(r0.y); y < i32minmax0(r0.y + sz.y, fb.sz.y); ++y)
+		for(u32 x = i32min0(r0.x); x < i32minmax0(r0.x + sz.x, fb.sz.x); ++x)
+			fb_set_pix(fb, p, x, y);
 }
 
 static inline
@@ -120,11 +119,10 @@ u32 u32min(u32 a, u32 b) {
 
 static
 void fb_draw_circle(Fbuf fb, Pixel p, u32 R, Vec2 r0) {
-	UVec2 r;
-	for(r.y = i32min0(r0.y - (i32)R); r.y < u32min(fb.sz.y, (u32)r0.y + R); ++r.y)
-		for(r.x = i32min0(r0.x - (i32)R); r.x < u32min(fb.sz.x, (u32)r0.x + R); ++r.x)
-			if(i32square(r.y - r0.y) + i32square(r.x - r0.x) < i32square(R))
-				fb_set_pix(fb, r, p);
+	for(u32 y = i32min0(r0.y - (i32)R); y < u32min(fb.sz.y, (u32)r0.y + R); ++y)
+		for(u32 x = i32min0(r0.x - (i32)R); x < u32min(fb.sz.x, (u32)r0.x + R); ++x)
+			if(i32square(y - r0.y) + i32square(x - r0.x) < i32square(R))
+				fb_set_pix(fb, p, x, y);
 }
 
 static
@@ -169,11 +167,10 @@ void fb_draw_triangle_bounded(Fbuf fb, Pixel p, UVec2 B0, UVec2 B1, Vec2 r0, Vec
 	dr2.x += B1.x*dr2.y;
 	B1.x += B0.x;
 
-	UVec2 r;
-	for(r.y = B0.y; r.y < B1.y; ++r.y, D1 -= dr2.x, D2 += dr1.x)
-		for(r.x = B0.x; r.x < B1.x; ++r.x, D1 += dr2.y, D2 -= dr1.y)
+	for(u32 y = B0.y; y < B1.y; ++y, D1 -= dr2.x, D2 += dr1.x)
+		for(u32 x = B0.x; x < B1.x; ++x, D1 += dr2.y, D2 -= dr1.y)
 			if(D1 >= 0 && D2 >= 0 && (u64)D1 + (u64)D2 <= (u64)D)
-				fb_set_pix(fb, r, p);
+				fb_set_pix(fb, p, x, y);
 }
 
 // TODO bounds checking
@@ -409,18 +406,18 @@ const u64 font_blank = 0x0000000000000000;
 
 static
 void fb_draw_u64_bitmap(Fbuf fb, Pixel p, UVec2 r, u64 bmp) {
-	for(u8 i = 0; i < 64; ++i)
-		if((bmp >> i) & 1)
-			fb_set_pix(fb, (UVec2) {r.x + i%8, r.y + i/8}, p);
+	for(u8 i = 0; i < 64; ++i, bmp >>= 1)
+		if(bmp & 1)
+			fb_set_pix(fb, p, r.x + i%8, r.y + i/8);
 }
 
 static
 void fb_draw_u64_bitmap_scaled(Fbuf fb, Pixel p, u32 scale, UVec2 r, u64 bmp) {
-	for(u8 i = 0; i < 64; ++i)
-		if((bmp >> i) & 1)
+	for(u8 i = 0; i < 64; ++i, bmp >>=1)
+		if(bmp & 1)
 			for(u32 y = 0; y < scale; ++y)
 				for(u32 x = 0; x < scale; ++x)
-					fb_set_pix(fb, (UVec2) {r.x + (i%8)*scale + x, r.y + (i/8)*scale + y}, p);
+					fb_set_pix(fb, p, r.x + (i%8)*scale + x, r.y + (i/8)*scale + y);
 }
 
 static
@@ -563,18 +560,18 @@ void draw(Fbuf fb, WinProps_X *wp) {
 
 		XPutImage(wp->disp, wp->win, DefaultGC(wp->disp, DefaultScreen(wp->disp)), &wp->img, 0, 0, 0, 0, fb.sz.x, fb.sz.y);
 
-		enum { PERIOD = 1200 };
 		drawclock_wait(&clk);
+		handle_events_x(wp);
+
+		enum { PERIOD = 1200 };
 		tm = 1000*clk.rel.tv_sec + (clk.rel.tv_nsec / 1000000);
 		posx = (((i64)tm % PERIOD) * EyeLength) / PERIOD;
 		if((tm % (2*PERIOD)) > PERIOD) posx = EyeLength - posx;
 
-		printf("%ld.%09ld : 0.%09ld s\r", clk.rel.tv_sec, clk.rel.tv_nsec, clk.diff.tv_nsec);
-		fflush(stdout);
-
-		handle_events_x(wp);
+		// printf("%ld.%09ld : 0.%09ld s\r", clk.rel.tv_sec, clk.rel.tv_nsec, clk.diff.tv_nsec);
+		// fflush(stdout);
 	}
-	printf("\n");
+	// printf("\n");
 }
 
 int main() {

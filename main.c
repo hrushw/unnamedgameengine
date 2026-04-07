@@ -1,6 +1,7 @@
 #include <stdint.h>
 #include <stddef.h>
 #include <stdio.h>
+#include <math.h>
 
 #include <time.h>
 
@@ -478,6 +479,8 @@ void draw(Fbuf fb, WinProps_X *wp) {
 		{17*fb.sz.x/32, 7*fb.sz.y/16},
 		{9*fb.sz.x/16, 3*fb.sz.y/8},
 	};
+	Vec2 Nose_origin = {fb.sz.x/2, 2*fb.sz.y/5};
+	Vec2 Nose_rot[sizeof(Nose)/sizeof(Vec2)];
 
 	Vec2 Teeth[] = {
 		{ 7*fb.sz.x/32, fb.sz.y/2},
@@ -541,7 +544,16 @@ void draw(Fbuf fb, WinProps_X *wp) {
 		fb_draw_rect(fb, 0x00FF00, EyeLeft.r0, EyeLeft.sz);
 		fb_draw_quad(fb, 0x00CF3F, EyeRight);
 		fb_draw_polygon_fan(fb, 0xFF0000, sizeof(Smilepts)/sizeof(Vec2), Smilepts);
-		fb_draw_polygon_strip(fb, 0xFFFF00, sizeof(Nose)/sizeof(Vec2), Nose);
+
+		double x0 = Nose_origin.x, y0 = Nose_origin.y;
+		for(u32 i = 0; i < sizeof(Nose)/sizeof(Vec2); ++i) {
+			double x = Nose[i].x, y = Nose[i].y;
+			double theta = (double)tm*M_PI_2/500.0;
+			Nose_rot[i].x = x0 + (x - x0)*cos(theta) + (y - y0)*sin(theta);
+			Nose_rot[i].y = y0 - (x - x0)*sin(theta) + (y - y0)*cos(theta);
+		}
+		fb_draw_polygon_strip(fb, 0xFFFF00, sizeof(Nose)/sizeof(Vec2), Nose_rot);
+
 		fb_draw_triangles_indexed(fb, 0xEFEFCF, sizeof(ToothIndices)/sizeof(u32), ToothIndices, Teeth);
 		fb_draw_rect(fb, 0xFF00FF, (Vec2) {-200, -300}, (UVec2) {100, 200});
 		fb_draw_rect(fb, 0xFFFFFF, Goatee.r0, Goatee.sz);
@@ -586,6 +598,7 @@ int main() {
 	if(wp.status == ERR_SUCCESS)
 		draw(fb, &wp);
 
+	wp.img.data = NULL;
 	XCloseDisplay(wp.disp);
 	render_to_ppm(fb);
 

@@ -4,8 +4,8 @@ CC=gcc
 # warn about all cases of overflow
 WFLAGS=-Wall -Wextra -Wpedantic -Wvla -Winline -Wstrict-overflow=5 -Wshift-overflow=2
 # enforce 2s complement signed arithmetic
-CFLAGS=-fwrapv
-LFLAGS=-lX11 -lXext
+CFLAGS=-fwrapv -O3
+LFLAGS=-lm -lX11 -lXext
 
 win: main.c
 	$(CC) $(CFLAGS) $(WFLAGS) $(LFLAGS) -o win main.c

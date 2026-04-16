@@ -7,14 +7,14 @@ WFLAGS=-Wall -Wextra -Wpedantic -Wvla -Winline -Wstrict-overflow=5 -Wshift-overf
 CFLAGS=-fwrapv -O3
 LFLAGS=-lm -lX11 -lXext
 
-win: main.c
-	$(CC) $(CFLAGS) $(WFLAGS) $(LFLAGS) -o win main.c
+test01: main.c test01.c
+	$(CC) $(CFLAGS) $(WFLAGS) $(LFLAGS) -o test01 test01.c
 
 clean:
-	rm -f win *.o *.ppm *.png
+	rm -f test01 *.o *.ppm *.png
 
-run: win
-	./win
+run: test01
+	./test01
 	which magick &>/dev/null \
 		&& magick img.ppm img.png \
 		|| convert img.ppm img.png

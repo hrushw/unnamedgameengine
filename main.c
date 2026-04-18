@@ -424,3 +424,12 @@ void handle_events_x(WinProps_X *wp) {
 		}
 }
 
+static inline
+void wp_putimage_x(Fbuf fb, WinProps_X *wp) {
+	XPutImage(
+		wp->disp, wp->win,
+		DefaultGC(wp->disp, DefaultScreen(wp->disp)),
+		&wp->img, 0, 0, 0, 0,
+		fb.sz.x, fb.sz.y
+	);
+}

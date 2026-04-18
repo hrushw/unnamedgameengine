@@ -22,4 +22,4 @@ test00_run: test00
 test01_run: test01
 	./test_run.sh $<
 
-run: test00_run
+run: test01_run

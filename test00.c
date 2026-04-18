@@ -4,11 +4,11 @@
 static
 void draw(Fbuf fb, WinProps_X *wp) {
 	enum { FRAME_NS = 16666667 };
-	DrawClock clk = drawclock_init((struct timespec) {0, FRAME_NS});
+	DrawClock clk = drawclock_init((Timespec) {0, FRAME_NS});
 	while(!wp->closed) {
 		fb_clear(fb, 0xFF0000);
 
-		XPutImage(wp->disp, wp->win, DefaultGC(wp->disp, DefaultScreen(wp->disp)), &wp->img, 0, 0, 0, 0, fb.sz.x, fb.sz.y);
+		wp_putimage_x(fb, wp);
 
 		drawclock_wait(&clk);
 		handle_events_x(wp);
